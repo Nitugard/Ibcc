@@ -10,7 +10,7 @@ set(SRC
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_FLAGS "-Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
-set(THIRD_PARTY_SRC Core/ThirdParty/gl3w/src/gl3w.c)
+set(THIRD_PARTY_SRC Core/ThirdParty/gl3w/src/gl3w.c Core/Containers/Array.h Core/Containers/Array.c)
 
 
 add_executable(${PROJECT_NAME} main.c ${SRC} ${THIRD_PARTY_SRC})
