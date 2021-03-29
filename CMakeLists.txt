@@ -1,25 +1,24 @@
 cmake_minimum_required(VERSION 3.17)
 project(FixedPhysics C)
 
-set(SRC
-        Core/FixedMath/FixedMath.c
-        Core/Device/DeviceGlfw.c
-        Core/Graphics/GraphicsGL.c
-        )
+set(SRC main.c)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_FLAGS "-Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
-set(THIRD_PARTY_SRC Core/ThirdParty/gl3w/src/gl3w.c Core/Containers/Array.h Core/Containers/Array.c)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Libs)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Libs)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
+set(CMAKE_STATIC_LIBRARY_PREFIX "")
+set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
+include_directories(Plugins)
+include_directories(Core)
 
-add_executable(${PROJECT_NAME} main.c ${SRC} ${THIRD_PARTY_SRC})
+add_subdirectory(Plugins)
+add_subdirectory(Core)
 
-target_include_directories(${PROJECT_NAME} PRIVATE
-        Core/ThirdParty/gl3w/include/
-        Core/ThirdParty/glfw3/include/
-        )
-target_link_directories(${PROJECT_NAME} PUBLIC
-        Core/ThirdParty/libs/
-        )
-target_link_libraries(${PROJECT_NAME} PRIVATE -lopengl32 -lglfw3)
+link_directories(./Libs)
+
+add_executable(${PROJECT_NAME} ${SRC})
+target_link_libraries(${PROJECT_NAME} PRIVATE Core)

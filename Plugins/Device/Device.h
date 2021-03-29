@@ -10,22 +10,8 @@
 #ifndef FIXEDPHYSICS_DEVICE_H
 #define FIXEDPHYSICS_DEVICE_H
 
+#include "Common.h"
 
-#include "../Types.h"
-
-#define DEVICE_DEBUG
-
-#ifndef DEVICE_ASSERT
-#include <assert.h>
-#define DEVICE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-#ifndef API
-#define API extern
-#endif
-
-struct device_wnd;
-typedef struct device_wnd* device_wnd_hndl;
 
 typedef struct device_wnd_desc{
     i32 width;
@@ -185,29 +171,26 @@ typedef struct device_cursor_state{
     bool wrap;
 } device_cursor_state;
 
-API bool device_init(void);
-API void device_terminate(void);
-
 API void device_events_poll(void);
 
-API void device_events_keys_set_callback(device_wnd_hndl, void(*)(device_key, device_key_state));
-API void device_events_mouse_set_callback(device_wnd_hndl, void(*)(device_mouse_state));
-API void device_events_input_set_callback(device_wnd_hndl, void(*)(char));
+API void device_events_keys_set_callback(void(*)(device_key, device_key_state));
+API void device_events_mouse_set_callback(void(*)(device_mouse_state));
+API void device_events_input_set_callback(void(*)(char));
 
-API device_key_state device_events_get_key(device_wnd_hndl, device_key);
-API device_mouse_state device_events_get_mouse(device_wnd_hndl);
+API device_key_state device_events_get_key(device_key);
+API device_mouse_state device_events_get_mouse();
 
-API device_wnd_hndl device_window_create(device_wnd_desc const*);
+API f64 device_get_time();
+
 API void device_window_resize(i32, i32);
-API void device_window_close(device_wnd_hndl);
-API void device_window_refresh(device_wnd_hndl);
-API void device_window_destroy(device_wnd_hndl);
-API bool device_window_valid(device_wnd_hndl);
+API void device_window_close();
+API void device_window_refresh();
+API bool device_window_valid();
 
-API void device_window_cursor_set_state(device_wnd_hndl, device_cursor_state const*);
-API device_cursor_state device_window_cursor_get_state(device_wnd_hndl);
+API void device_window_cursor_set_state(device_cursor_state const*);
+API device_cursor_state device_window_cursor_get_state();
 
-API void device_window_mouse_update(device_wnd_hndl);
-API void device_window_cursor_update(device_wnd_hndl);
+API void device_window_mouse_update();
+API void device_window_cursor_update();
 
 #endif //FIXEDPHYSICS_DEVICE_H

@@ -1,0 +1,177 @@
+/*
+ *  Copyright (C) 2021 by Dragutin Sredojevic
+ *  https://www.nitugard.com
+ *  All Rights Reserved.
+ */
+#include "Plugin.h"
+#include <windows.h>
+#include <Log/Log.h>
+
+#ifndef PLUGIN_ASSERT
+#include <assert.h>
+#define PLUGIN_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#endif
+
+typedef void (*proc_on_start)(plg_info*);
+typedef void (*proc_on_stop)();
+typedef bool (*proc_on_load)();
+typedef void (*proc_on_unload)();
+typedef void (*proc_on_update)();
+
+typedef struct plg {
+
+    HMODULE handle;
+
+    //only called once
+    proc_on_start proc_start;
+    proc_on_stop proc_stop;
+
+    //called when loaded/unloaded(reload)
+    proc_on_load proc_load;
+    proc_on_unload proc_unload;
+    proc_on_update proc_update;
+
+    plg_info info;
+    bool initialized;
+} plg;
+
+#define MAXIMUM_PLUGINS_COUNT 256
+plg plugins[MAXIMUM_PLUGINS_COUNT];
+plg_handle plugins_graph[MAXIMUM_PLUGINS_COUNT];
+
+i32 loaded_plugins_count = 0;
+i32 graph_count = 0;
+
+i32 plg_get_index_by_name(const char* name)
+{
+    for(i32 i=0; i<loaded_plugins_count; ++i)
+    {
+        if(strcmp(plugins[i].info.name, name) == 0)
+            return i;
+    }
+
+    return -1;
+}
+
+void plg_dependecy_resolve(i32 node) {
+    plg_info info = plugins[node].info;
+    for (i32 i = 0; i < info.req_plugins_count; ++i) {
+        plg_dependecy_resolve(plg_get_index_by_name(info.req_plugins[i].name));
+    }
+
+    for (i32 i = 0; i < graph_count; ++i) {
+        if (strcmp(plugins_graph[i]->info.name, plugins[node].info.name) == 0)
+            return;
+    }
+    plugins_graph[graph_count++] = plugins + node;
+}
+
+void plg_update_dependency_graph()
+{
+    graph_count = 0;
+    plg_dependecy_resolve(loaded_plugins_count-1);
+}
+
+plg_handle plg_load_recursive(const plg_desc * desc) {
+
+    //check if plugins has already been loaded
+    i32 loaded_plugin_id = plg_get_index_by_name(desc->name);
+    if(loaded_plugin_id != -1)
+    {
+        //todo: check version and print error if mismatched
+        return plugins + loaded_plugin_id;
+    }
+
+    HMODULE lib = LoadLibrary(desc->name);
+    if (lib != NULL) {
+        plg_info info;
+
+        FARPROC proc_start =  GetProcAddress(lib, "plg_on_start");
+        FARPROC proc_stop =  GetProcAddress(lib, "plg_on_stop");
+        FARPROC proc_load =  GetProcAddress(lib, "plg_on_load");
+        FARPROC proc_unload =  GetProcAddress(lib, "plg_on_unload");
+        FARPROC proc_update =  GetProcAddress(lib, "plg_on_update");
+
+        if(proc_start == 0) {
+            LOG_ERROR("Plugin load failed for %s, procedure void(*plg_on_start)(plg_info*) not found.\n", desc->name);
+            return 0;
+        }
+
+
+        (void(*)(plg_info*))(proc_start)(&info);
+        if(strcmp(info.name, desc->name) != 0)
+        {
+            LOG_ERROR("Plugin load failed for %s, plg_name mismatch (%s).\n", desc->name, info.name);
+            return 0;
+        }
+
+        //check version
+        if(info.version < desc->min_version) {
+            LOG_ERROR("Could not load plugin %s, version mismatch, required: %i, current: %i\n", desc->name,
+                    desc->min_version, info.version);
+            return 0;
+        }
+
+        for(i32 i=0; i < info.req_plugins_count; ++i) {
+            if (!plg_load_recursive(&info.req_plugins[i])) {
+                LOG_ERROR("Plugin load failed for %s, dependency error\n", info.name);
+                return 0;
+            }
+        }
+
+        plg plugin = {
+                .info = info,
+                .proc_start = (proc_on_start)proc_start,
+                .proc_stop = (proc_on_stop)proc_stop,
+                .proc_load = (proc_on_load)proc_load,
+                .proc_unload = (proc_on_unload)proc_unload,
+                .proc_update = (proc_on_update)proc_update,
+                .initialized = false,
+                .handle = lib,
+        };
+        plugins[loaded_plugins_count++] = plugin;
+        return plugins+(loaded_plugins_count-1);
+    }
+
+    LOG_ERROR("Plugin load failed for %s, could not be found", desc->name);
+    return 0;
+}
+
+plg_handle plg_load(const plg_desc * desc) {
+    plg_handle handle = plg_load_recursive(desc);
+    if(handle != 0) {
+        plg_update_dependency_graph();
+
+        for(i32 i=0; i<loaded_plugins_count; ++i)
+        {
+            if(!plugins_graph[i]->initialized)
+            {
+                LOG_INFO("Plugin %s loaded, version: %i loaded, dependency: %i\n", plugins_graph[i]->info.name,
+                        plugins_graph[i]->info.version, plugins_graph[i]->info.req_plugins_count);
+
+                if(!plugins_graph[i]->proc_load())
+                {
+                    //plugin failed to be loaded, everything that depends on this plugin
+                    //will be unloaded
+                    //TODO
+                }
+                plugins_graph[i]->initialized = true;
+            }
+        }
+    }
+
+    return handle;
+}
+
+void plg_stop(plg_handle handle) {
+    //check if anything depends on this plugin, fail if does
+
+}
+
+void plg_update(plg_handle handle) {
+    for (i32 i = 0; i < loaded_plugins_count; ++i) {
+        if(plugins_graph[i]->proc_update != 0) plugins_graph[i]->proc_update();
+        if (handle == plugins_graph[i])
+            return;
+    }
+}

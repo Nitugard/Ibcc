@@ -9,25 +9,16 @@
 #ifndef FIXEDPHYSICS_FIXEDMATH_H
 #define FIXEDPHYSICS_FIXEDMATH_H
 
-#include "../Types.h"
+#include "../Common.h"
 
 typedef i64 fp;
 typedef struct fp_vec3 fp_vec3;
 typedef struct fp_vec4 fp_vec4;
 typedef struct fp_mat4 fp_mat4;
 
-#define DEBUG
+//#define DEBUG
 //#define FLOAT_MATH
 
-
-#ifndef FP_ASSERT
-#include <assert.h>
-#define FP_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-#ifndef API
-#define API extern
-#endif
 #ifndef PP_NARG
 #define PP_NARG(...) \
          PP_NARG_(__VA_ARGS__,PP_RSEQ_N())

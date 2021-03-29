@@ -1,0 +1,10 @@
+[submodule "Plugins/ThirdParty/glfw"]
+	path = Plugins/ThirdParty/glfw
+	url = https://github.com/glfw/glfw
+[submodule "Plugins/ThirdParty/gl3w"]
+	path = Plugins/ThirdParty/gl3w
+	url = https://github.com/skaslev/gl3w
+
+[submodule "Plugins/ThirdParty/jsmn"]
+	path = Plugins/ThirdParty/jsmn
+	url = https://github.com/zserge/jsmn

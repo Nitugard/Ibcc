@@ -9,18 +9,7 @@
 #define FIXEDPHYSICS_ARRAY_H
 
 
-#include "../Types.h"
-
-#define ARRAY_DEBUG
-
-#ifndef ARRAY_ASSERT
-#include <assert.h>
-#define ARRAY_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-#ifndef API
-#define API extern
-#endif
+#include "../Common.h"
 
 typedef struct arr* arr_handle;
 typedef void* element_ptr;

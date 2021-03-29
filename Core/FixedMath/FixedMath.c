@@ -10,6 +10,12 @@
 #include <math.h>
 #include <stdarg.h>
 
+
+#ifndef FP_ASSERT
+#include <assert.h>
+#define FP_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#endif
+
 #define FP_FRACTION_MASK (((1ULL << 32)-1))
 #define FP_INTEGER_MASK (~((1ULL << 32)-1))
 

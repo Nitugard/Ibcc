@@ -8,20 +8,9 @@
 #ifndef FIXEDPHYSICS_GRAPHICS_H
 #define FIXEDPHYSICS_GRAPHICS_H
 
-#include "../Types.h"
+#include <Common.h>
 
-#ifndef GFX_ASSERT
-
-#include <assert.h>
-
-#define GFX_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-#ifndef API
-#define API extern
-#endif
-
-#define MAXIMUM_SHADER_ATTRIBUTES 32
+#define MAXIMUM_PIPELINE_ATTRIBUTES 32
 
 typedef enum gfx_buffer_type {
     VERTEX,
@@ -72,7 +61,7 @@ typedef struct gfx_shader_stage {
 typedef struct gfx_shader_desc {
     gfx_shader_stage fs, vs;
     i8 const *name;
-    gfx_shader_attr attrs[MAXIMUM_SHADER_ATTRIBUTES];
+    gfx_shader_attr attrs[MAXIMUM_PIPELINE_ATTRIBUTES];
 
 } gfx_shader_desc;
 
@@ -83,11 +72,19 @@ typedef struct gfx_buffer_desc {
     void *data;
 } gfx_buffer_desc;
 
+typedef struct gfx_pipeline_uniform{
+
+} gfx_pipeline_uniform;
+
 
 typedef struct gfx_pipeline_desc {
     gfx_shader_handle shader;
+    gfx_pipeline_attr attrs[MAXIMUM_PIPELINE_ATTRIBUTES];
+
+    i32 uniform_count;
+    gfx_pipeline_uniform* uniforms;
+
     i8 const *name;
-    gfx_pipeline_attr attrs[MAXIMUM_SHADER_ATTRIBUTES];
     bool contiguous_buffer;
 } gfx_pipeline_desc;
 
