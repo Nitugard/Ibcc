@@ -29,7 +29,7 @@ i32 total_size;
 #define TRACKED_ALLOCATIONS (1024 * 128)
 os_proxy_header* allocations;
 
-mem_hndl os_allocate_proxy(i32 size, const i8 * file, i32 line) {
+void* os_allocate_proxy(i32 size, const i8 * file, i32 line) {
     os_proxy_header* mem = ALLOC(size + sizeof(os_proxy_header));
     mem->file = file;
     mem->line = line;
@@ -47,10 +47,10 @@ mem_hndl os_allocate_proxy(i32 size, const i8 * file, i32 line) {
             break;
         }
     }
-    return (mem_hndl)(mem + 1);
+    return (void*)(mem + 1);
 }
 
-mem_hndl os_reallocate_proxy(mem_hndl hndl, i32 new_size, const i8 * file, i32 line) {
+void* os_reallocate_proxy(void* hndl, i32 new_size, const i8 * file, i32 line) {
     os_proxy_header* mem = (os_proxy_header*)(hndl) - 1;
     total_allocations--;
     total_size -= mem->size;
@@ -64,10 +64,10 @@ mem_hndl os_reallocate_proxy(mem_hndl hndl, i32 new_size, const i8 * file, i32 l
     allocations[mem->index] = *mem;
     total_allocations++;
     total_size += new_size;
-    return (mem_hndl)(mem + 1);
+    return (void*)(mem + 1);
 }
 
-void os_free_proxy(mem_hndl hndl, const i8 * file, i32 line) {
+void os_free_proxy(void* hndl, const i8 * file, i32 line) {
     os_proxy_header* mem = (os_proxy_header*)(hndl) - 1;
     total_allocations--;
     total_size -= mem->size;
@@ -76,14 +76,13 @@ void os_free_proxy(mem_hndl hndl, const i8 * file, i32 line) {
     FREE(hndl);
 }
 
-mem_hndl os_memcpy(mem_hndl dest, mem_hndl src, i32 size) {
+void* os_memcpy(void* dest, void const* src, i32 size) {
     return memcpy(dest, src, size);
 }
 
-mem_hndl os_memset(mem_hndl dest, i32 value, i32 size) {
+void* os_memset(void* dest, i32 value, i32 size) {
     return memset(dest, value, size);
 }
-
 
 bool os_assert_memory() {
     if(total_allocations > 0)
@@ -105,9 +104,10 @@ void os_allocator_finalize() {
         LOG_FATAL("Memory leak, num allocations: %i, memory: %i\n", total_allocations, total_size);
     }
     for(i32 i=0; i<TRACKED_ALLOCATIONS; ++i) {
-        if (allocations[i].valid) {
-            LOG_FATAL("Memory leak, size: %i, realloc: %i, src:\n%s:%i\n", allocations[i].size,
-                      allocations[i].realloc, allocations[i].file, allocations[i].line);
+        struct os_proxy_header header = allocations[i];
+        if (header.valid) {
+            LOG_FATAL("Memory leak, size: %i, realloc: %i, src:\n%s:%i\n", header.size,
+                      header.realloc, header.file, header.line);
         }
     }
 

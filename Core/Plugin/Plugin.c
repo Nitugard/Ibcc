@@ -98,7 +98,7 @@ plg_handle plg_load_recursive(const plg_desc * desc) {
         }
 
 
-        (void(*)(plg_info*))(proc_start)(&info);
+        (void(*)(plg_info*))(void*)(proc_start)(&info);
         if(strcmp(info.name, desc->name) != 0)
         {
             LOG_ERROR("Plugin load failed for %s, plg_name mismatch (%s).\n", desc->name, info.name);
@@ -108,7 +108,7 @@ plg_handle plg_load_recursive(const plg_desc * desc) {
         //check version
         if(info.version < desc->min_version) {
             LOG_ERROR("Could not load plugin %s, version mismatch, required: %i, current: %i\n", desc->name,
-                    desc->min_version, info.version);
+                      desc->min_version, info.version);
             return 0;
         }
 
@@ -121,11 +121,11 @@ plg_handle plg_load_recursive(const plg_desc * desc) {
 
         plg plugin = {
                 .info = info,
-                .proc_start = (proc_on_start)proc_start,
-                .proc_stop = (proc_on_stop)proc_stop,
-                .proc_load = (proc_on_load)proc_load,
-                .proc_unload = (proc_on_unload)proc_unload,
-                .proc_update = (proc_on_update)proc_update,
+                .proc_start = (proc_on_start)(void*)proc_start,
+                .proc_stop = (proc_on_stop)(void*)proc_stop,
+                .proc_load = (proc_on_load)(void*)proc_load,
+                .proc_unload = (proc_on_unload)(void*)proc_unload,
+                .proc_update = (proc_on_update)(void*)proc_update,
                 .initialized = false,
                 .handle = lib,
         };
@@ -147,9 +147,9 @@ plg_handle plg_load(const plg_desc * desc) {
             if(!plugins_graph[i]->initialized)
             {
                 LOG_INFO("Plugin %s loaded, version: %i loaded, dependency: %i\n", plugins_graph[i]->info.name,
-                        plugins_graph[i]->info.version, plugins_graph[i]->info.req_plugins_count);
+                         plugins_graph[i]->info.version, plugins_graph[i]->info.req_plugins_count);
 
-                if(!plugins_graph[i]->proc_load())
+                if(!plugins_graph[i]->proc_load(&plugins_graph[i]->info))
                 {
                     //plugin failed to be loaded, everything that depends on this plugin
                     //will be unloaded
@@ -165,7 +165,11 @@ plg_handle plg_load(const plg_desc * desc) {
 
 void plg_stop(plg_handle handle) {
     //check if anything depends on this plugin, fail if does
-
+    handle->proc_stop(&handle->info);
+    handle->initialized = false;
+    handle->handle = 0;
+    FreeLibrary(handle->handle);
+    //TODO: REMOVE FROM PLUGINS_GRAPH
 }
 
 void plg_update(plg_handle handle) {
@@ -174,4 +178,13 @@ void plg_update(plg_handle handle) {
         if (handle == plugins_graph[i])
             return;
     }
+}
+
+void plg_unload() {
+
+    for (i32 i = 0; i < loaded_plugins_count; ++i) {
+        plg_stop(plugins_graph[i]);
+    }
+
+    loaded_plugins_count = 0;
 }

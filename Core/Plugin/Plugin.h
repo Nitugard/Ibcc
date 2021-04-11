@@ -26,7 +26,6 @@ typedef struct plg_info{
 
 API plg_handle plg_load(plg_desc const*);
 API void plg_update(plg_handle);
-API void plg_reload(plg_handle);
-API void plg_unload(plg_handle);
+API void plg_unload();
 
 #endif //FIXEDPHYSICS_PLUGIN_H

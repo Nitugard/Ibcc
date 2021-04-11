@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
-project(FixedPhysics C)
+project(Ibc C)
 
 set(SRC main.c)
 
@@ -12,11 +12,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
 set(CMAKE_STATIC_LIBRARY_PREFIX "")
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
-include_directories(Plugins)
+include_directories(Engine)
 include_directories(Core)
 
-add_subdirectory(Plugins)
+add_subdirectory(Engine)
 add_subdirectory(Core)
+add_subdirectory(Tools)
 
 link_directories(./Libs)
 

@@ -47,7 +47,6 @@ void plg_on_start(plg_info* info) {
     info->version = 1;
 }
 
-
 //todo: device terminate
 bool plg_on_load() {
     if (!glfwInit()) {
@@ -93,6 +92,7 @@ bool plg_on_load() {
 void plg_on_stop()
 {
     glfwDestroyWindow(wnd.handle);
+    glfwTerminate();
 }
 
 struct device_mouse_state device_mouse_calc_state(double x, double y, double x1, double y1)

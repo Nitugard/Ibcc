@@ -13,10 +13,10 @@ void main() {
     gl_Position = mvp * vec4(a_pos, 1.0);
     f_coord = a_coord;
 }
-    //@end
+//@end
 
-    //@begin_frag
-    #version 450
+//@begin_frag
+#version 450
 
 precision mediump float;
 

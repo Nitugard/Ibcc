@@ -31,7 +31,8 @@ typedef struct gfx_pipeline{
     u32 id;
 }gfx_pipeline;
 
-plg_desc req_plugins[] = {{.name = "Device", .min_version = 1}};
+plg_desc req_plugins[] = {
+                          {.name = "Device", .min_version = 1}};
 void plg_on_start(plg_info* info) {
 
     info->name = "Graphics";
@@ -40,13 +41,18 @@ void plg_on_start(plg_info* info) {
     info->version = 1;
 }
 
-bool plg_on_load() {
+bool plg_on_load(plg_info const* info) {
     if (gl3wInit()) {
         LOG_ERROR("Failed to initialize OpenGL\n");
         return false;
     }
 
     return true;
+}
+
+
+void plg_on_stop(plg_info* info){
+
 }
 
 

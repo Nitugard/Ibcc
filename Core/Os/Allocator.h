@@ -14,7 +14,6 @@
 
 #include "Common.h"
 
-typedef void* mem_hndl;
 
 #define OS_MALLOC(size) os_allocate_proxy(size, __FILE__, __LINE__)
 #define OS_REALLOC(ptr, new_size) os_reallocate_proxy(ptr, new_size, __FILE__, __LINE__)
@@ -25,11 +24,11 @@ typedef void* mem_hndl;
 API void os_allocator_init();
 API void os_allocator_finalize();
 
-API mem_hndl os_memcpy(mem_hndl, mem_hndl, i32);
-API mem_hndl os_memset(mem_hndl, i32, i32);
+API void* os_memcpy(void*, void const*, i32);
+API void* os_memset(void*, i32, i32);
 
-API mem_hndl os_allocate_proxy(i32, i8 const*, i32);
-API mem_hndl os_reallocate_proxy(mem_hndl, i32, i8 const*, i32);
-API void os_free_proxy(mem_hndl, i8 const*, i32);
+API void* os_allocate_proxy(i32, i8 const*, i32);
+API void* os_reallocate_proxy(void*, i32, i8 const*, i32);
+API void os_free_proxy(void*, i8 const*, i32);
 
 #endif //FIXEDPHYSICS_ALLOCATOR_H

@@ -7,6 +7,10 @@
 #include <Graphics/Graphics.h>
 #include <Game/ShaderTest.h>
 #include <Plugin/Plugin.h>
+#include <Asset/Json/Json.h>
+#include <Asset/Asset.h>
+#include <Log/Log.h>
+#include <Os/Allocator.h>
 
 void input_callback(char a)
 {
@@ -14,7 +18,9 @@ void input_callback(char a)
 }
 
 plg_desc req_plugins[] = {{.name = "Graphics", .min_version = 1},
-                            {.name = "Device", .min_version = 1}};
+                            {.name = "Device", .min_version = 1},
+                          {.name = "Asset", .min_version = 1}
+                          };
 
 void plg_on_start(plg_info* info) {
 
@@ -52,6 +58,7 @@ bool plg_on_load()
             0, 0, 1, 1,
     };
 
+
     gfx_buffer_desc buffer_v_desc ={
             .size = sizeof(vertices),
             .type = VERTEX,
@@ -85,7 +92,6 @@ bool plg_on_load()
     };
     gfx_pipeline_handle pipeline = gfx_pipeline_create(&pipeline_desc);
 
-
     while (device_window_valid()) {
         if (device_events_get_key(DEVICE_KEY_ESCAPE) == DEVICE_PRESS_ACTION) {
             device_window_close();
@@ -109,4 +115,10 @@ bool plg_on_load()
     //cleanup resources
     gfx_shader_destroy(shader);
     return true;
+}
+
+
+void plg_on_stop()
+{
+
 }

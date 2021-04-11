@@ -1,0 +1,36 @@
+/*
+ *  Copyright (C) 2021 by Dragutin Sredojevic
+ *  https://www.nitugard.com
+ *  All Rights Reserved.
+ */
+
+
+#ifndef FIXEDPHYSICS_JSON_H
+#define FIXEDPHYSICS_JSON_H
+
+#include "Common.h"
+
+typedef enum json_token_type{
+    JSON_UNDEFINED = 0,
+    JSON_OBJECT = 1,
+    JSON_ARRAY = 2,
+    JSON_STRING = 3,
+    JSON_PRIMITIVE = 4
+} json_token_type;
+
+typedef struct json_token{
+    json_token_type type;
+    i32 start;
+    i32 end;
+    i32 children;
+} json_token;
+
+typedef struct json_data{
+    json_token* tokens;
+    i32 tokens_count;
+    const i8* blob;
+} json_data;
+
+typedef json_data* json_hndl;
+
+#endif //FIXEDPHYSICS_JSON_H

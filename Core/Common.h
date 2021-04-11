@@ -42,4 +42,6 @@ typedef long long i64;
 typedef int i32;
 typedef char i8;
 
+typedef long int ptrdiff;
+
 #endif //FIXEDPHYSICS_COMMON_H
