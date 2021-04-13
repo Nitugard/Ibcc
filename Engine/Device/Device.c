@@ -63,7 +63,7 @@ bool plg_on_load() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
 
-    GLFWwindow *window = glfwCreateWindow(600, 400, "Device", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(800, 600, "Device", NULL, NULL);
     glfwMakeContextCurrent(window);
     DEVICE_ASSERT(window != NULL);
 
@@ -84,8 +84,8 @@ bool plg_on_load() {
     wnd.handle = window;
     wnd.device_events_input_callback = NULL;
     wnd.device_events_keyboard_callback = NULL;
-    wnd.width = 600;
-    wnd.height = 400;
+    wnd.width = 800;
+    wnd.height = 600;
     return true;
 }
 

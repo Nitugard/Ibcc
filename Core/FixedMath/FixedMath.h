@@ -17,7 +17,7 @@ typedef struct fp_vec4 fp_vec4;
 typedef struct fp_mat4 fp_mat4;
 
 //#define DEBUG
-//#define FLOAT_MATH
+#define FLOAT_MATH
 
 #ifndef PP_NARG
 #define PP_NARG(...) \
@@ -53,7 +53,7 @@ typedef struct fp_mat4 fp_mat4;
 
 #define FP_ZERO (0)
 #define FP_ONE (1ULL<<32)
-#define FP_NEG_ONE (fp_negate(1LL << 32))
+#define FP_NEG_ONE (fp_negate_p(1LL << 32))
 #define FP_HALF (1ULL<<31)
 #define FP_THIRD (1431655765)
 #define FP_QUARTER (1ULL<<30)
@@ -120,6 +120,9 @@ API fp fp_from_double(f64);
 API fp fp_from_uninit_fp(fp);
 API i32 fp_to_int(fp);
 API f64 fp_to_double(fp);
+
+API void fp_to_double_v(fp const*, i32, double*);
+API void fp_to_float_v(fp const*, i32, float*);
 
 API fp fp_abs_p(fp);
 API fp fp_sqrt_p(fp);
@@ -198,10 +201,12 @@ API fp_mat4 fp_rotateY_m(fp angle);
 API fp_mat4 fp_rotateZ_m(fp angle);
 API fp_mat4 fp_rotateZXY_m(fp_vec3 const*);
 API fp_mat4 fp_axis_angle_m(const fp_vec3 *, fp);
+API fp_mat4 fp_perspective_m(fp fov, fp ar, fp near, fp far);
 API fp_mat4 fp_scale_m(fp_vec3 const*);
 API fp_mat4 fp_skew_m(const fp_vec3* v);
 
 API fp fp_det_m(fp_mat4 const*);
 API fp_mat4 fp_inv_m(fp_mat4 const*);
+API fp_mat4 fp_transpose_m(fp_mat4 const*);
 
 #endif //FIXEDPHYSICS_FIXEDMATH_H

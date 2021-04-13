@@ -33,4 +33,9 @@ typedef struct json_data{
 
 typedef json_data* json_hndl;
 
+API bool json_token_name_cmp(json_hndl hndl, i32 token, i8 const * name, i32 len);
+API i32 json_token_find(json_hndl hndl, i8 const* name, json_token_type type, i32 offset, i32 length);
+API void json_token_print(json_hndl, i32 token);
+API void json_token_to_str(json_hndl, i32 token, char* buffer);
+
 #endif //FIXEDPHYSICS_JSON_H

@@ -6,5 +6,6 @@ set(SRC ./Containers/Array.c
         ./Log/Log.c
         ./Os/File.c
         ./Os/Time.c
+        ./HandmadeMath/HandmadeMath.c
         )
 add_library(${PROJECT_NAME} SHARED ${SRC})

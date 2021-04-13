@@ -16,6 +16,7 @@ typedef struct asset* asset_hndl;
 typedef struct asset_register_desc{
     i8 const* extension;
     asset_hndl(*asset_on_load)(void* file);
+    void(*asset_on_unload)(asset_hndl asset);
 } asset_register_desc;
 
 API bool asset_register(struct asset_register_desc const* desc);

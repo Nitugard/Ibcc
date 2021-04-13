@@ -28,9 +28,12 @@ typedef struct gfx_buffer{
 
 typedef struct gfx_pipeline{
     gfx_shader_handle shader;
-    u32 id;
+    u32 vao_id;
+    u32 ebo_id;
+
 }gfx_pipeline;
 
+gfx_pipeline_handle current_pipeline;
 plg_desc req_plugins[] = {
                           {.name = "Device", .min_version = 1}};
 void plg_on_start(plg_info* info) {
@@ -88,6 +91,8 @@ u32 gl_get_buffer_type(gfx_buffer_type type) {
             return GL_ARRAY_BUFFER;
         case INDEX:
             return GL_ELEMENT_ARRAY_BUFFER;
+        case UNIFORM:
+            return GL_UNIFORM_BUFFER;
         default:
             GFX_ASSERT(0 && "Invalid buffer type");
             return 0;
@@ -116,18 +121,6 @@ void gl_print_program_err(i32 shader)
     OS_FREE(buffer);
 }
 
-u32 gfx_type_get_size(enum gfx_type type)
-{
-    switch (type) {
-        case GFX_FLOAT: return sizeof(float);
-        case GFX_INT: return sizeof(int);
-        default:
-            GFX_ASSERT(0 && "Gfx invalid type");
-            return 0;
-    }
-}
-
-
 gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
 
     gfx_shader_handle shader = OS_MALLOC(sizeof(gfx_shader));
@@ -137,16 +130,16 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
 
     i32 compiled = 0;
     u32 vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderBinary(1, &vs, GL_SHADER_BINARY_FORMAT_SPIR_V, desc->vs.src, desc->vs.length);
-    glSpecializeShader(vs, desc->vs.entry, 0, 0, 0);
+    glShaderSource(vs, 1, &desc->vs.src, 0);
+    glCompileShader(vs);
     glGetShaderiv(vs, GL_COMPILE_STATUS, &compiled);
     if (compiled)
         glAttachShader(shader->id, vs);
     else gl_print_shader_err(vs);
     compiled = 0;
-    u32 fs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderBinary(1, &fs, GL_SHADER_BINARY_FORMAT_SPIR_V, desc->fs.src, desc->fs.length);
-    glSpecializeShader(fs, desc->fs.entry, 0, 0, 0);
+    u32 fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &desc->fs.src, 0);
+    glCompileShader(fs);
     glGetShaderiv(fs, GL_COMPILE_STATUS, &compiled);
     if (compiled)
         glAttachShader(shader->id, fs);
@@ -169,6 +162,12 @@ void gfx_shader_destroy(gfx_shader_handle shader) {
 }
 
 gfx_buffer_handle gfx_buffer_create(const gfx_buffer_desc * desc) {
+
+    if(desc->type == UNIFORM && desc->size >= GL_MAX_UNIFORM_BLOCK_SIZE) {
+        LOG_ERROR("Failed to create shader. Uniform block size reached its limit!");
+        return 0;
+    }
+
     GFX_ASSERT(desc->size != 0);
     gfx_buffer_handle buffer = OS_MALLOC(sizeof(struct gfx_buffer));
 
@@ -208,8 +207,14 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     gfx_pipeline_handle pipeline = OS_MALLOC(sizeof(struct gfx_buffer));
     pipeline->shader = desc->shader;
 
-    glCreateVertexArrays(1, &(pipeline->id));
-    glBindVertexArray(pipeline->id);
+    glCreateVertexArrays(1, &(pipeline->vao_id));
+    glBindVertexArray(pipeline->vao_id);
+
+    if(desc->index_buffer != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, desc->index_buffer->id);
+        pipeline->ebo_id = desc->index_buffer->id;
+    }
+    else pipeline->ebo_id = GL_INVALID_INDEX;
 
     if(is_contigous) {
         memset(unique_buffers, 0, sizeof(unique_buffers));
@@ -233,7 +238,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
                 pip_buff* p_buff = &unique_buffers[unique_buffer_index];
                 offsets[i] = p_buff->next_offset;
                 p_buff->buffer = p_attr.buffer;
-                p_buff->next_offset += s_attr.num_elements * gfx_type_get_size(s_attr.type);
+                p_buff->next_offset += s_attr.num_elements * s_attr.size;
 
             }
         }
@@ -271,25 +276,78 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
             }
         }
     }
+    i32 binding_point = 0;
+    for(i32 i=0; i<MAXIMUM_PIPELINE_UNIFORM_BLOCKS; ++i)
+    {
+        if(binding_point >= GL_MAX_UNIFORM_BUFFER_BINDINGS) {
+            LOG_ERROR("Uniform block limit reached %s\n", desc->shader);
+            break;
+        }
+
+        gfx_pipeline_uniform_block block = desc->uniform_blocks[i];
+        if(block.enabled)
+        {
+            u32 block_id = glGetUniformBlockIndex(desc->shader->id, block.name);
+            if(GL_INVALID_INDEX == block_id) {
+                LOG_ERROR("Uniform block with name %s has not been found for shader %s\n", block.name,
+                          desc->shader->id);
+                continue;
+            }
+
+            glUniformBlockBinding(desc->shader->id, block_id, binding_point);
+            glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, block.buffer->id);
+            ++binding_point;
+        }
+    }
 
     glBindVertexArray(0);
     return pipeline;
 }
 
-void gfx_draw(gfx_pipeline_handle pip) {
+void gfx_apply_pipeline(gfx_pipeline_handle pip) {
 
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
 
     glUseProgram(pip->shader->id);
-    glBindVertexArray(pip->id);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(pip->vao_id);
+    if(pip->ebo_id != GL_INVALID_VALUE)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pip->ebo_id);
+}
 
+void gfx_draw_triangles(i32 start, i32 length)
+{
+    glDrawArrays(GL_TRIANGLES, start, length);
+}
+
+void gfx_draw_triangles_indexed(i32 length)
+{
+    glDrawElements(GL_TRIANGLES, length, GL_UNSIGNED_INT, 0);
 }
 
 void gfx_buffer_update(gfx_buffer_handle buffer, const gfx_buffer_desc * desc) {
     glBindBuffer(gl_get_buffer_type(desc->type), buffer->id);
     glBufferSubData(gl_get_buffer_type(desc->type), 0, desc->size, desc->data);
+}
+
+void gfx_pipeline_destroy(gfx_pipeline_handle hndl) {
+    //TODO
+    glDeleteVertexArrays(1, &(hndl->vao_id));
+    OS_FREE(hndl);
+}
+
+void gfx_begin_default_pass(const gfx_pass_action * action) {
+    switch (action->action) {
+        case GFX_ACTION_CLEAR:
+        glClearColor(action->value.x, action->value.y, action->value.z, action->value.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+        break;
+    }
+}
+
+void gfx_end_pass() {
+
 }
 
 

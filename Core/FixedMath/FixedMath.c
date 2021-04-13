@@ -531,35 +531,38 @@ fp_mat4 fp_trs_m(const fp_vec3 * t, const fp_vec3 *r, const fp_vec3 *s) {
 }
 
 fp_mat4 fp_rotateX_m(fp angle) {
-    const fp c = cos(angle);
-    const fp s = sin(angle);
+    const fp c = fp_cos_p(angle);
+    const fp s = fp_sin_p(angle);
     fp_mat4 result = {.data = {
-            1,	0,	0,
-            0,	c, -s,
-            0,	s,	c,
+            FP_ONE,	FP_ZERO,	FP_ZERO, FP_ZERO,
+            FP_ZERO,	c, -s, FP_ZERO,
+            FP_ZERO,	s,	c, FP_ZERO,
+            FP_ZERO,  FP_ZERO,  FP_ZERO,FP_ONE
     }};
     return result;
 }
 
 fp_mat4 fp_rotateY_m(fp angle) {
-    const fp c = cos(angle);
-    const fp s = sin(angle);
+    const fp c = fp_cos_p(angle);
+    const fp s = fp_sin_p(angle);
     fp_mat4 result = {.data ={
-             c, 0, s,
-             0, 1, 0,
-            -s, 0, c,
+             c, FP_ZERO, s, FP_ZERO,
+             FP_ZERO, FP_ONE, FP_ZERO, FP_ZERO,
+            -s, FP_ZERO, c, FP_ZERO,
+             FP_ZERO, FP_ZERO, FP_ZERO,FP_ONE
     }};
 
     return result;
 }
 
 fp_mat4 fp_rotateZ_m(fp angle) {
-    const fp c = cos(angle);
-    const fp s = sin(angle);
+    const fp c = fp_cos_p(angle);
+    const fp s = fp_sin_p(angle);
     fp_mat4 result = {.data ={
-            c, -s,	0,
-            s,	c,	0,
-            0,	0,	1,
+            c, -s, FP_ZERO, FP_ZERO,
+            s, c, FP_ZERO, FP_ZERO,
+            FP_ZERO, FP_ZERO, FP_ONE, FP_ZERO,
+            FP_ZERO, FP_ZERO, FP_ZERO, FP_ONE,
     }};
     return result;
 }
@@ -644,6 +647,44 @@ i32 fp_equal_p(fp a, fp b) {
 i32 fp_not_eq_p(fp a, fp b) {
     return a != b;
 }
+
+void fp_to_double_v(const fp * v, i32 c, double * o) {
+    for(i32 i=0; i<c; ++i)
+        o[i] = fp_to_double(v[i]);
+}
+
+void fp_to_float_v(const fp * v, i32 c, float * o) {
+    for(i32 i=0; i<c; ++i)
+        o[i] = fp_to_double(v[i]);
+}
+
+fp_mat4 fp_perspective_m(fp fov, fp ar, fp Near, fp Far) {
+    fp cot = FP_DIV(FP_ONE, fp_tan_p(FP_MUL(fov, FP_DIV(FP_PI, fp_from_int(360)))));
+    struct fp_mat4 result = FP_MAT_ZERO;
+    result.m00 = FP_DIV(cot, ar);
+    result.m11 = cot;
+    result.m32 = FP_NEG_ONE;
+    result.m22 = FP_DIV(FP_ADD(Near, Far), FP_SUB(Near, Far));
+    result.m23 = FP_DIV(FP_MUL(fp_from_int(2), Near, Far), FP_SUB(Near, Far));
+    result.m33 = FP_ZERO;
+    return result;
+}
+
+fp_mat4 fp_transpose_m(const fp_mat4 * mat) {
+    struct fp_mat4 Result;
+    int Columns;
+    for(Columns = 0; Columns < 4; ++Columns)
+    {
+        int Rows;
+        for(Rows = 0; Rows < 4; ++Rows)
+        {
+            Result.data[Columns + Rows * 4] = mat->data[Rows + Columns * 4];
+        }
+    }
+
+    return Result;
+}
+
 
 void divllu(u64 u0, u64 u1, u64 v, u64 *q, u64 *r) {
 
