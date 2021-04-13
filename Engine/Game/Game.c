@@ -117,11 +117,13 @@ bool plg_on_load()
         }
 
         sf_vec3 co = sf_vec3_new(sf_new(0), sf_new(0), sf_new(-10));
+        sf_mat4 m4o = sf_mat_ortographic(sf_new(-1), sf_new(1), sf_new(-1), sf_new(1), sf_new_fraction(1, 10),
+                                         sf_new(100));
         sf_mat4 m4p = sf_mat_perspective(sf_new(60), sf_new_fraction(800, 600), sf_new_fraction(1, 10), sf_new(100));
         sf_mat4 m4t = sf_mat_translate(&co);
         sf_mat4 m4r = sf_mat_rotate_y(sf_new_fraction(device_get_time() * 100, 100));
 
-        sf_mat4 m4 = SF_MAT_MUL(&m4p, &m4t, &m4r);
+        sf_mat4 m4 = SF_MAT_MUL(&m4o, &m4t, &m4r);
 
         sf_array_to_float_array(m4.data, 16, mvp.projection);
 

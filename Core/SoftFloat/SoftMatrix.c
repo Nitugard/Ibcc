@@ -271,3 +271,17 @@ sf_mat4 sf_mat_op_cumm_variadic(sf_mat4(*op)(sf_mat4 const*, sf_mat4 const*), i3
     va_end(args);
     return *num;
 }
+
+sf_mat4 sf_mat_ortographic(sf bot, sf top, sf left, sf right, sf near, sf far) {
+
+    sf two = sf_new(2);
+    sf_mat4 result = SF_MAT_IDENTITY;
+    result.m00 = SF_DIV(two, SF_SUB(right, left));
+    result.m11 = SF_DIV(two, SF_SUB(top, bot));
+    result.m22 = SF_DIV(two, SF_SUB(near, far));
+    result.m33 = SF_ONE;
+    result.m30 = SF_DIV(SF_ADD(left, right), SF_SUB(left, right));
+    result.m31 = SF_DIV(SF_ADD(bot, top), SF_SUB(bot, top));
+    result.m32 = SF_DIV(SF_ADD(far, near), SF_SUB(near, far));
+    return result;
+}

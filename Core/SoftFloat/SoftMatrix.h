@@ -49,6 +49,7 @@ API sf_mat4 sf_mat_rotate_z(sf angle);
 API sf_mat4 sf_mat_rotate_zxy(sf_vec3 const *euler_angles);
 API sf_mat4 sf_mat_axis_angle(const sf_vec3 *axis, sf angle);
 API sf_mat4 sf_mat_perspective(sf fov, sf ar, sf near, sf far);
+API sf_mat4 sf_mat_ortographic(sf bot, sf top, sf left, sf right, sf near, sf far);
 API sf_mat4 sf_mat_scale(sf_vec3 const *scale);
 API sf_mat4 sf_mat_skew(const sf_vec3* a);
 

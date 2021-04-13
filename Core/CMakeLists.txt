@@ -1,9 +1,6 @@
 set(PROJECT_NAME Core)
 set(SRC ./Containers/Array.c
         ./Plugin/Plugin.c
-        ./FixedPoint/FixedPoint.c
-        ./FixedPoint/FixedVector.c
-        ./FixedPoint/FixedMatrix.c
         ./SoftFloat/SoftFloat.c
         ./SoftFloat/SoftVector.c
         ./SoftFloat/SoftMatrix.c
@@ -11,7 +8,6 @@ set(SRC ./Containers/Array.c
         ./Log/Log.c
         ./Os/File.c
         ./Os/Time.c
-        ./HandmadeMath/HandmadeMath.c
         )
 
 add_library(${PROJECT_NAME} SHARED ${SRC})
