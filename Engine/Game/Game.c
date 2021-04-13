@@ -9,11 +9,11 @@
 #include <Plugin/Plugin.h>
 #include <Asset/Asset.h>
 #include <Log/Log.h>
-#include <FixedMath/FixedMath.h>
 #include <Os/Time.h>
-#include <HandmadeMath/HandmadeMath.h>
 #include <Os/Allocator.h>
 #include <Game/Primitives/Cube.h>
+
+#include <SoftFloat/SoftMatrix.h>
 
 void input_callback(char a)
 {
@@ -116,30 +116,14 @@ bool plg_on_load()
             device_window_close();
         }
 
-        //fp_mat4 m4 = fp_rotateY_m(fp_from_double(device_get_time()));
-        //struct fp_mat4 m4 = fp_perspective_m(fp_from_double(60), fp_from_double(1.33), fp_from_double(0.1), fp_from_double(100));
-        //fp_to_float_v(m4.data, 16, mvp.projection);
+        sf_vec3 co = sf_vec3_new(sf_new(0), sf_new(0), sf_new(-10));
+        sf_mat4 m4p = sf_mat_perspective(sf_new(60), sf_new_fraction(800, 600), sf_new_fraction(1, 10), sf_new(100));
+        sf_mat4 m4t = sf_mat_translate(&co);
+        sf_mat4 m4r = sf_mat_rotate_y(sf_new_fraction(device_get_time() * 100, 100));
 
-        hmm_vec3 t = {.Elements = {0,0,10}};
-        hmm_vec3 c = {.Elements = {0,0,0}};
-        hmm_vec3 u = {.Elements = {0,1,0}};
+        sf_mat4 m4 = SF_MAT_MUL(&m4p, &m4t, &m4r);
 
-        const float radius = 2.0f;
-        float camX = sinf((float)device_get_time() * radius);
-        float camZ = cosf((float)device_get_time() * radius);
-
-        hmm_mat4 view = HMM_LookAt( HMM_Vec3(camX, 0.0f, camZ),
-                                    HMM_Vec3(0.0f, 0.0f, 0.0f),
-                                    HMM_Vec3(0.0f, 1.0f, 0.0f));
-
-
-        hmm_mat4 m4p = HMM_Perspective(45, 1.3f, 0.1f, 100);
-        hmm_mat4 model = HMM_Translate(HMM_Vec3(0,0,-10));
-
-        hmm_mat4 m = HMM_MultiplyMat4(model, view);
-        m = HMM_MultiplyMat4(m4p, m);
-
-        OS_MEMCPY(mvp.projection, m.Elements, 16 * 4);
+        sf_array_to_float_array(m4.data, 16, mvp.projection);
 
         gfx_begin_default_pass(&default_pass);
         gfx_apply_pipeline(pipeline);

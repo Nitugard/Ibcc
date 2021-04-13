@@ -11,7 +11,7 @@ static const i8 vs_source[] = CONCATENATE(
      layout (location = position_attr) in vec3 v_pos_in;
      layout (location = color_attr) in vec4 v_color_in;
 
-     uniform matrices{
+     layout(row_major) uniform matrices{
          mat4 projection;
          mat4 modelview;
      };

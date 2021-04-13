@@ -8,7 +8,7 @@
 #ifndef FIXEDPHYSICS_FIXEDMATHLUT_H
 #define FIXEDPHYSICS_FIXEDMATHLUT_H
 
-#include "FixedMath.h"
+#include "FixedPoint.h"
 
 const i32 FpSinLutSegments = 512;
 const i64 FpSinLut[1536] = {
