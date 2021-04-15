@@ -6,23 +6,20 @@
 
 
 #include "Asset.h"
-#include <Plugin/Plugin.h>
-#include <Os/Allocator.h>
-#include <Os/File.h>
-#include <string.h>
-#include <Log/Log.h>
 
-#define MAXIMUM_ASSETS 128
-#define MAXIMUM_LOADED_ASSETS 1024
+#include <Os/Plugin.h>
+#include <Os/File.h>
+#include <Os/Log.h>
+#include <Containers/String.h>
+#include <Containers/Array.h>
 
 typedef struct asset_data{
     asset_hndl hndl;
-    const i8* name;
+    string_handle path;
 } asset_data;
 
-bool asset_descriptions_valid[MAXIMUM_ASSETS];
-asset_register_desc asset_descriptions[MAXIMUM_ASSETS];
-asset_data loaded_assets[MAXIMUM_LOADED_ASSETS];
+arr_handle registered_types; //asset_register_desc[]
+arr_handle loaded_assets; //asset_data[]
 
 plg_desc req_plugins[] = {};
 void plg_on_start(plg_info* info) {
@@ -34,147 +31,121 @@ void plg_on_start(plg_info* info) {
 }
 
 bool plg_on_load(plg_info const* info) {
-    OS_MEMSET(asset_descriptions_valid, 0, sizeof(bool) * MAXIMUM_ASSETS);
-    OS_MEMSET(loaded_assets, 0, sizeof(asset_data) * MAXIMUM_LOADED_ASSETS);
-
+    registered_types = arr_new(sizeof(asset_register_desc), 32);
+    loaded_assets = arr_new(sizeof(struct asset_data), 32);
     return true;
 }
 
-void plg_on_stop(plg_info* info)
-{
-}
-
-i32 asset_config_find_by_id(i8* const fext)
-{
-    i32 i;
-    for(i=0; i<MAXIMUM_ASSETS; ++i)
-    {
-        if(!asset_descriptions_valid[i]) continue;
-        if(strcmp(asset_descriptions[i].extension, fext) == 0)
-            return i;
+void plg_on_stop(plg_info* info) {
+    for (int32_t i = 0; i < arr_size(loaded_assets); ++i) {
+        struct asset_data const *data = (struct asset_data const *) arr_get(loaded_assets, i);
+        asset_unload(data->hndl);
     }
 
-    return -1;
+    arr_delete(registered_types);
+    arr_delete(loaded_assets);
 }
 
-i32 asset_data_find_by_path(const i8* path)
+int32_t find_registered_type_description(char const* fext)
 {
-    for (i32 i = 0; i < MAXIMUM_LOADED_ASSETS; ++i) {
-        if (loaded_assets[i].name == path) {
+    int32_t i;
+    for(i=0; i < arr_size(registered_types); ++i) {
+        struct asset_register_desc const *desc = (struct asset_register_desc const*) arr_get(registered_types, i);
+        if (str_cmp(desc->extension, fext) == 0)
             return i;
-        }
     }
     return -1;
 }
 
-i32 asset_data_find_by_hndl(asset_hndl hndl)
+int32_t asset_data_find_by_path(const char* path)
 {
-    for (i32 i = 0; i < MAXIMUM_LOADED_ASSETS; ++i) {
-        if (loaded_assets[i].hndl == hndl) {
+    int32_t i;
+    for(i=0; i < arr_size(loaded_assets); ++i) {
+        struct asset_data const *data= (struct asset_data const*) arr_get(loaded_assets, i);
+        if (str_cmp(str_internal(data->path), path) == 0)
             return i;
-        }
     }
     return -1;
+
 }
 
-bool asset_loaded_data_full() {
-    for (i32 i = 0; i < MAXIMUM_LOADED_ASSETS; ++i) {
-        if (loaded_assets[i].hndl == 0) {
-            return false;
-        }
+int32_t asset_data_find_by_hndl(asset_hndl hndl)
+{
+    int32_t i;
+    for(i=0; i < arr_size(loaded_assets); ++i) {
+        struct asset_data const *data= (struct asset_data const*) arr_get(loaded_assets, i);
+        if (data->hndl == hndl)
+            return i;
     }
-
-    return true;
+    return -1;
 }
 
 bool asset_register(struct asset_register_desc const* desc) {
-    for (i32 i = 0; i < MAXIMUM_ASSETS; ++i) {
-        if(!asset_descriptions_valid[i]) continue;
-        if (strcmp(asset_descriptions[i].extension, desc->extension) == 0) {
-            return false;
-        }
-    }
-    for (i32 i = 0; i < MAXIMUM_ASSETS; ++i) {
-        if(!asset_descriptions_valid[i])
-        {
-            asset_descriptions_valid[i] = true;
-            asset_descriptions[i] = *desc;
-            return true;
-        }
-    }
-    return false;
+    int32_t index = find_registered_type_description(desc->extension);
+    if (index != -1) return false;
+    asset_register_desc desc_nonconst = *desc;
+    arr_add(registered_types, &desc_nonconst);
+    return true;
 }
 
-bool asset_load_ex(const i8* path, void* data)
-{
-    i8 fname[1024];
-    i8 fext[128];
-    file_path_filename(path, fname, true);
-    file_path_ext(fname, fext);
+bool asset_load_execute(const char* path, void* data) {
+    string_handle path_handle = str_new(path);
+    string_handle extension_handle = str_path_ext(path_handle);
 
-    i32 i = asset_config_find_by_id(fext);
-    if(i == -1) {
+    int32_t i = find_registered_type_description(str_internal(extension_handle));
+
+    str_delete(path_handle);
+    str_delete(extension_handle);
+
+    if (i == -1) {
         LOG_ERROR("Configuration for the asset type could not be found %s\n", path);
         return false;
     }
 
     file_hndl fhndl = file_open(path, "r");
-    *((asset_hndl*)data) = asset_descriptions[i].asset_on_load(fhndl);
+    *((asset_hndl *) data) = ((struct asset_register_desc const *) arr_get(registered_types, i))->asset_on_load(fhndl);
     file_close(fhndl);
 
     return true;
 }
 
-asset_hndl asset_load(const i8 *name) {
+asset_hndl asset_load(const char *name) {
 
-    i32 pi = asset_data_find_by_path(name);
-    if(pi != -1) {
+    int32_t pi = asset_data_find_by_path(name);
+    if (pi != -1) {
         LOG_INFO("Asset preloaded %s\n", name);
-        return loaded_assets[pi].hndl;
-    }
-
-    if(asset_loaded_data_full())
-    {
-        LOG_ERROR("Asset could not be loaded %s, capacity is full\n", name);
-        return 0;
+        return ((struct asset_data *const) arr_get(loaded_assets, pi))->hndl;
     }
 
     asset_hndl hndl = NULL;
-    if(!asset_load_ex(name, &hndl))
-    {
+    if (!asset_load_execute(name, &hndl)) {
         LOG_ERROR("Asset could not be loaded %s\n", name);
-    }
-    else {
+    } else {
         LOG_INFO("Asset loaded %s\n", name);
-        i32 i;
-        for (i = 0; i < MAXIMUM_LOADED_ASSETS; ++i) {
-            if (loaded_assets[i].hndl == 0) {
-                loaded_assets[i].hndl = hndl;
-                loaded_assets[i].name = name;
-                break;
-            }
-        }
+        asset_data data = {.hndl = hndl, .path = str_new(name)};
+        arr_add(loaded_assets, &data);
     }
 
     return hndl;
 }
 
 void asset_unload(asset_hndl hndl) {
-    i32 i = asset_data_find_by_hndl(hndl);
+    int32_t i = asset_data_find_by_hndl(hndl);
     if (i == -1) {
         LOG_FATAL("Asset could not be unloaded!\n");
         return;
     }
+    asset_data const *data = ((struct asset_data *const) arr_get(loaded_assets, i));
 
-    i8 fname[1024];
-    i8 fext[128];
-    file_path_filename(loaded_assets[i].name, fname, true);
-    file_path_ext(fname, fext);
+    string_handle path_handle = data->path;
+    string_handle extension_handle = str_path_ext(path_handle);
 
-    i32 extId = asset_config_find_by_id(fext);
-    asset_descriptions[extId].asset_on_unload(hndl);
+    int32_t extId = find_registered_type_description(str_internal(extension_handle));
+    ((struct asset_register_desc const *) arr_get(registered_types, extId))->asset_on_unload(hndl);
 
-    loaded_assets[i].name = "\0";
-    loaded_assets[i].hndl = 0;
+    str_delete(path_handle);
+    str_delete(extension_handle);
+
+    arr_remove(loaded_assets, i);
 }
 

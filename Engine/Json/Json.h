@@ -8,7 +8,13 @@
 #ifndef FIXEDPHYSICS_JSON_H
 #define FIXEDPHYSICS_JSON_H
 
-#include "Common.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifndef API
+#define API
+#endif
 
 typedef enum json_token_type{
     JSON_UNDEFINED = 0,
@@ -20,22 +26,22 @@ typedef enum json_token_type{
 
 typedef struct json_token{
     json_token_type type;
-    i32 start;
-    i32 end;
-    i32 children;
+    int32_t start;
+    int32_t end;
+    int32_t children;
 } json_token;
 
 typedef struct json_data{
     json_token* tokens;
-    i32 tokens_count;
-    const i8* blob;
+    int32_t tokens_count;
+    const char* blob;
 } json_data;
 
 typedef json_data* json_hndl;
 
-API bool json_token_name_cmp(json_hndl hndl, i32 token, i8 const * name, i32 len);
-API i32 json_token_find(json_hndl hndl, i8 const* name, json_token_type type, i32 offset, i32 length);
-API void json_token_print(json_hndl, i32 token);
-API void json_token_to_str(json_hndl, i32 token, char* buffer);
+API bool json_token_name_cmp(json_hndl hndl, int32_t token, char const * name, int32_t len);
+API int32_t json_token_find(json_hndl hndl, char const* name, json_token_type type, int32_t offset, int32_t length);
+API void json_token_print(json_hndl, int32_t token);
+API void json_token_to_str(json_hndl, int32_t token, char* buffer);
 
 #endif //FIXEDPHYSICS_JSON_H

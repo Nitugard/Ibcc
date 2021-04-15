@@ -5,7 +5,7 @@
  */
 
 
-#include <Plugin/Plugin.h>
+#include <Os/Plugin.h>
 #include <Os/Allocator.h>
 int main() {
     plg_desc desc = {

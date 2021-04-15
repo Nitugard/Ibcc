@@ -10,30 +10,31 @@
 #include <Os/Allocator.h>
 #include <Os/File.h>
 #include <Asset/Asset.h>
-#include <Log/Log.h>
+#include <Os/Log.h>
 #include <string.h>
-#include <Plugin/Plugin.h>
+#include <Os/Plugin.h>
 #include "Json.h"
 
 
 
-asset_hndl asset_on_load_json(void* hptr) {
+asset_hndl asset_on_load_tex(void* hptr) {
     file_hndl hndl = (file_hndl)hptr;
-    i32 size = file_size(hndl);
-    json_hndl json_hndl = OS_MALLOC(sizeof(struct json_data) + sizeof(i8) * size);
+    int32_t size = file_size(hndl);
+    json_hndl json_hndl = OS_MALLOC(sizeof(struct json_data) + sizeof(char) * size);
     file_buffer buffer = {.size = size, .memory = json_hndl + 1};
     json_hndl->blob = buffer.memory;
-    i32 maximum_tokens = 1024;
+    int32_t maximum_tokens = 1024;
     json_hndl->tokens = OS_MALLOC(maximum_tokens * sizeof(struct json_token));
     json_hndl->tokens_count = maximum_tokens;
     file_read(hndl, &buffer);
     jsmn_parser parser;
     jsmn_init(&parser);
-    i32 err = 0;
+    int32_t err = 0;
     do{
         if(err == JSMN_ERROR_NOMEM)
         {
-            json_hndl->tokens = OS_REALLOC(json_hndl->tokens, json_hndl->tokens_count * 2 * sizeof(struct json_token));
+            json_hndl->tokens = OS_REALLOC(json_hndl->tokens,
+                                           json_hndl->tokens_count * 2 * sizeof(struct json_token));
             json_hndl->tokens_count = json_hndl->tokens_count * 2;
         }
         err = jsmn_parse(&parser, buffer.memory, buffer.size, (jsmntok_t *) json_hndl->tokens,
@@ -55,16 +56,16 @@ asset_hndl asset_on_load_json(void* hptr) {
     return (asset_hndl) json_hndl;
 }
 
-void asset_on_unload_json(asset_hndl hndl)
+void asset_on_unload_tex(asset_hndl hndl)
 {
     json_hndl jhndl = hndl;
     OS_FREE(jhndl->tokens);
     OS_FREE(jhndl);
 }
 
-i32 json_token_find(json_hndl hndl, i8 const* name, json_token_type type, i32 offset, i32 length) {
-    i32 len = strlen(name);
-    for(i32 i=offset; i<length; ++i)
+int32_t json_token_find(json_hndl hndl, char const* name, json_token_type type, int32_t offset, int32_t length) {
+    int32_t len = strlen(name);
+    for(int32_t i=offset; i < length; ++i)
     {
         struct json_token t = hndl->tokens[i];
         if(json_token_name_cmp(hndl, i, name, len) && t.type == type)
@@ -73,18 +74,18 @@ i32 json_token_find(json_hndl hndl, i8 const* name, json_token_type type, i32 of
     return -1;
 }
 
-void json_token_to_str(json_hndl hndl, i32 token, char* buffer) {
+void json_token_to_str(json_hndl hndl, int32_t token, char* buffer) {
     json_token t = hndl->tokens[token];
-    OS_MEMCPY(buffer, hndl->blob + t.start, t.end - t.start);
+    os_memcpy(buffer, hndl->blob + t.start, t.end - t.start);
     buffer[t.end - t.start + 1] = '\0';
 }
 
-bool json_token_name_cmp(json_hndl hndl, i32 token, const i8 *name, i32 len) {
+bool json_token_name_cmp(json_hndl hndl, int32_t token, const char *name, int32_t len) {
     struct json_token t = hndl->tokens[token];
     if(t.end - t.start != len)
         return false;
 
-    for(i32 i=t.start; i<t.end; ++i)
+    for(int32_t i=t.start; i < t.end; ++i)
     {
         if(hndl->blob[i] != name[i - t.start])
             return false;
@@ -93,7 +94,7 @@ bool json_token_name_cmp(json_hndl hndl, i32 token, const i8 *name, i32 len) {
     return true;
 }
 
-void json_token_print(json_hndl hndl, i32 token) {
+void json_token_print(json_hndl hndl, int32_t token) {
     json_token t = hndl->tokens[token];
     char name_buff[1024];
     json_token_to_str (hndl, token, name_buff);
@@ -111,11 +112,10 @@ void plg_on_start(plg_info* info) {
 }
 
 bool plg_on_load(plg_info const* info) {
-    asset_init();
     asset_register_desc json_desc = {
             .extension = "json",
-            .asset_on_load = asset_on_load_json,
-            .asset_on_unload = asset_on_unload_json
+            .asset_on_load = asset_on_load_tex,
+            .asset_on_unload = asset_on_unload_tex
     };
 
     return true;

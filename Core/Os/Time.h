@@ -5,16 +5,50 @@
  */
 
 
-#ifndef FIXEDPHYSICS_TIME_H
-#define FIXEDPHYSICS_TIME_H
+#ifndef TIME_H
+#define TIME_H
 
-#include "Common.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifndef API
+#define API
+#endif
 
 
-API i64 time_now();
-API bool time_equals(i64, i64);
+API int64_t time_now();
+API bool time_equals(int64_t, int64_t);
 
-API i64 time_file_created(i8 const*);
-API i64 time_file_modified(i8 const*);
+API int64_t time_file_created(char const*);
+API int64_t time_file_modified(char const*);
 
-#endif //FIXEDPHYSICS_TIME_H
+#endif //TIME_H
+
+#ifdef TIME_IMPLEMENTATION
+
+#include <time.h>
+#include <sys/stat.h>
+
+int64_t time_file_created(const char* fp) {
+    struct stat t_stat;
+    stat(fp, &t_stat);
+    return t_stat.st_ctime;
+}
+
+int64_t time_file_modified(const char * fp) {
+    struct stat t_stat;
+    stat(fp, &t_stat);
+    return t_stat.st_mtime;
+}
+
+int64_t time_now() {
+    time_t t = time(0);
+    return t;
+}
+
+bool time_equals(int64_t a, int64_t b) {
+    return a == b;
+}
+
+#undef TIME_IMPLEMENTATION
+#endif

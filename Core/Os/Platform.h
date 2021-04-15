@@ -4,10 +4,8 @@
  *  All Rights Reserved.
  */
 
-#ifndef FIXEDPHYSICS_COMMON_H
-#define FIXEDPHYSICS_COMMON_H
-
-#include <stdbool.h>
+#ifndef PLATFORM_H
+#define PLATFORM_H
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 #define P_WIN
@@ -29,20 +27,4 @@
 #define C_GNUC
 #endif
 
-#ifndef API
-#define API extern
-#endif
-
-typedef unsigned long long u64;
-typedef unsigned int u32;
-typedef unsigned char u8;
-typedef double f64;
-typedef float f32;
-
-typedef long long i64;
-typedef int i32;
-typedef char i8;
-
-typedef long int ptrdiff;
-
-#endif //FIXEDPHYSICS_COMMON_H
+#endif //PLATFORM_H

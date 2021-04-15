@@ -8,38 +8,46 @@
 #include "Device.h"
 
 #include <GLFW/glfw3.h>
-#include <Plugin/Plugin.h>
-#include <Log/Log.h>
+#include <Os/Plugin.h>
+#include <Os/Log.h>
 #include <Os/Allocator.h>
 
 #ifndef DEVICE_ASSERT
+
 #include <assert.h>
+
 #define DEVICE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
 #endif
 
-typedef struct device_wnd{
-    GLFWwindow* handle;
-    i32 width, height;
+typedef struct device_wnd {
+    GLFWwindow *handle;
+    int32_t width, height;
     device_cursor_state cursor_state;
     device_mouse_state mouse_state;
+
     void (*device_events_keyboard_callback)(device_key, device_key_state);
+
     void (*device_events_input_callback)(char);
+
     void (*device_events_mouse_callback)(device_mouse_state);
 } device_wnd;
 
-typedef struct device_timer{
-    i64 start_time;
-}device_timer;
+typedef struct device_timer {
+    int64_t start_time;
+} device_timer;
 
 device_wnd wnd;
 
-void glfw_character_callback(GLFWwindow* window, unsigned int codepoint);
-void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
-void glfw_cursor_pos_callback(GLFWwindow* window, double x, double y);
+void glfw_character_callback(GLFWwindow *window, uint32_t codepoint);
+
+void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_t action, int32_t mods);
+
+void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y);
 
 
 plg_desc req_plugins[] = {};
-void plg_on_start(plg_info* info) {
+
+void plg_on_start(plg_info *info) {
 
     info->name = "Device";
     info->req_plugins = req_plugins;
@@ -80,7 +88,7 @@ bool plg_on_load() {
 
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GLFW_TRUE);
 
-    OS_MEMSET(&wnd, 0, sizeof(device_wnd));
+    os_memset(&wnd, 0, sizeof(device_wnd));
     wnd.handle = window;
     wnd.device_events_input_callback = NULL;
     wnd.device_events_keyboard_callback = NULL;
@@ -89,14 +97,12 @@ bool plg_on_load() {
     return true;
 }
 
-void plg_on_stop()
-{
+void plg_on_stop() {
     glfwDestroyWindow(wnd.handle);
     glfwTerminate();
 }
 
-struct device_mouse_state device_mouse_calc_state(double x, double y, double x1, double y1)
-{
+struct device_mouse_state device_mouse_calc_state(double x, double y, double x1, double y1) {
     device_mouse_state state;
     state.dx = x1 - x;
     state.dy = y1 - y;
@@ -105,19 +111,18 @@ struct device_mouse_state device_mouse_calc_state(double x, double y, double x1,
     return state;
 }
 
-double clamp(double x, double min, double max){
-    if(x > max) return max;
-    if(x < min) return min;
+double clamp(double x, double min, double max) {
+    if (x > max) return max;
+    if (x < min) return min;
     return x;
 }
 
 //workaround
-GLFWcursor* glfw_blank_cursor()
-{
-    int w=1;
-    int h=1;;
-    unsigned char pixels[w * h * 4];
-    OS_MEMSET(pixels, 0, sizeof(pixels));
+GLFWcursor *glfw_blank_cursor() {
+    int32_t w = 1;
+    int32_t h = 1;;
+    char pixels[w * h * 4];
+    os_memset(pixels, 0, sizeof(pixels));
     GLFWimage image;
     image.width = w;
     image.height = h;
@@ -125,7 +130,7 @@ GLFWcursor* glfw_blank_cursor()
     return glfwCreateCursor(&image, 0, 0);
 }
 
-device_key glfw_key_to_device_key(i32 key) {
+device_key glfw_key_to_device_key(int32_t key) {
     switch (key) {
         case GLFW_KEY_UNKNOWN :
             return DEVICE_KEY_UNKNOWN;
@@ -390,7 +395,7 @@ device_key glfw_key_to_device_key(i32 key) {
     }
 }
 
-i32 device_key_to_glfw_key(device_key key) {
+int32_t device_key_to_glfw_key(device_key key) {
 
     switch (key) {
         case DEVICE_KEY_UNKNOWN :
@@ -656,46 +661,43 @@ i32 device_key_to_glfw_key(device_key key) {
     }
 }
 
-device_key_state glfw_key_action_to_device_state(i32 action)
-{
-    switch(action)
-    {
-        case GLFW_PRESS: return DEVICE_PRESS_ACTION;
-        case GLFW_REPEAT: return DEVICE_HOLD_ACTION;
-        case GLFW_RELEASE: return DEVICE_RELEASE_ACTION;
-        default: return DEVICE_UNKNOWN_ACTION;
+device_key_state glfw_key_action_to_device_state(int32_t action) {
+    switch (action) {
+        case GLFW_PRESS:
+            return DEVICE_PRESS_ACTION;
+        case GLFW_REPEAT:
+            return DEVICE_HOLD_ACTION;
+        case GLFW_RELEASE:
+            return DEVICE_RELEASE_ACTION;
+        default:
+            return DEVICE_UNKNOWN_ACTION;
     }
 }
 
-void glfw_character_callback(GLFWwindow* window, unsigned int codepoint)
-{
-    if(wnd.device_events_input_callback != NULL)
-    {
-        wnd.device_events_input_callback((char)codepoint);
+void glfw_character_callback(GLFWwindow *window, uint32_t codepoint) {
+    if (wnd.device_events_input_callback != NULL) {
+        wnd.device_events_input_callback((char) codepoint);
     }
 }
 
-void glfw_key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_t action, int32_t mods) {
 
     if (wnd.device_events_keyboard_callback != NULL) {
         wnd.device_events_keyboard_callback(glfw_key_to_device_key(key), glfw_key_action_to_device_state(action));
     }
 }
 
-void glfw_cursor_pos_callback(GLFWwindow* window, double x, double y)
-{
-    if(wnd.device_events_mouse_callback != NULL)
-    {
+void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y) {
+    if (wnd.device_events_mouse_callback != NULL) {
         wnd.device_events_mouse_callback(wnd.mouse_state);
     }
 }
 
-device_key_state device_events_get_key(device_key key)
-{
-    return glfw_key_action_to_device_state(glfwGetKey(wnd.handle,device_key_to_glfw_key(key)));
+device_key_state device_events_get_key(device_key key) {
+    return glfw_key_action_to_device_state(glfwGetKey(wnd.handle, device_key_to_glfw_key(key)));
 }
 
-device_mouse_state device_events_get_mouse(){
+device_mouse_state device_events_get_mouse() {
     return wnd.mouse_state;
 }
 
@@ -709,9 +711,9 @@ void device_events_poll(void) {
 }
 
 bool device_window_valid() {
-    if(wnd.handle == NULL)
+    if (wnd.handle == NULL)
         return false;
-    if(glfwWindowShouldClose(wnd.handle))
+    if (glfwWindowShouldClose(wnd.handle))
         return false;
 
     return true;
@@ -723,7 +725,7 @@ void device_events_keys_set_callback(void (*callback)(device_key, device_key_sta
     wnd.device_events_keyboard_callback = callback;
 }
 
-void device_events_input_set_callback(void (* callback)(char)) {
+void device_events_input_set_callback(void (*callback)(char)) {
     wnd.device_events_input_callback = callback;
 }
 
@@ -732,17 +734,15 @@ void device_window_close() {
     glfwSetWindowShouldClose(wnd.handle, true);
 }
 
-void device_window_cursor_set_state(const device_cursor_state * state) {
+void device_window_cursor_set_state(const device_cursor_state *state) {
 
 //    if(wnd->cursor_state.centered != state->centered);
 //    if(wnd->cursor_state.wrap != state->wrap);
 //    if(wnd->cursor_state.confined != state->confined);
 
-    if(!state->visible)
-    {
+    if (!state->visible) {
         glfwSetCursor(wnd.handle, glfw_blank_cursor());
-    }
-    else{
+    } else {
         glfwSetCursor(wnd.handle, NULL);
     }
 
@@ -751,24 +751,22 @@ void device_window_cursor_set_state(const device_cursor_state * state) {
 }
 
 
-
 device_cursor_state device_window_cursor_get_state() {
     return wnd.cursor_state;
 }
 
-void device_events_mouse_set_callback( void (*callback)(device_mouse_state)) {
+void device_events_mouse_set_callback(void (*callback)(device_mouse_state)) {
     wnd.device_events_mouse_callback = callback;
 }
-
 
 
 void device_window_cursor_update() {
 
 
-    device_cursor_state state  = wnd.cursor_state;
-    device_mouse_state* mouse_state = &(wnd.mouse_state);
-    i32                 width  = wnd.width;
-    i32                 height = wnd.height;
+    device_cursor_state state = wnd.cursor_state;
+    device_mouse_state *mouse_state = &(wnd.mouse_state);
+    int32_t width = wnd.width;
+    int32_t height = wnd.height;
     double x, y;
     glfwGetCursorPos(wnd.handle, &x, &y);
 
@@ -804,7 +802,7 @@ void device_window_mouse_update() {
     wnd.mouse_state = device_mouse_calc_state(wnd.mouse_state.x, wnd.mouse_state.y, x, y);
 }
 
-f64 device_get_time() {
+double device_get_time() {
     return glfwGetTime();
 }
 

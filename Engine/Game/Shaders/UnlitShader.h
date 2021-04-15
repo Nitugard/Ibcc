@@ -3,34 +3,37 @@
 #include "Common.h"
 
 #define position_attr 0
-#define color_attr 1
+#define uv_attr 1
 
-
-static const i8 vs_source[] = CONCATENATE(
+static const char vs_source[] = CONCATENATE(
         SH_VER,
-     layout (location = position_attr) in vec3 v_pos_in;
-     layout (location = color_attr) in vec4 v_color_in;
+     layout (location = position_attr) in vec3 v_pos;
+     layout (location = uv_attr) in vec2 v_uv;
 
      layout(row_major) uniform matrices{
          mat4 projection;
          mat4 modelview;
      };
 
-     out vec4 v_color_out;
+     out vec2 _uv;
+
      void main() {
-         gl_Position = projection * vec4(v_pos_in.xyz, 1.0);
-         v_color_out = vec4(v_color_in.xyz, 1.0);
+         gl_Position = projection * vec4(v_pos.xyz, 1.0);
+         _uv = v_uv;
      }
 );
 
-static const i8 fs_source[] = CONCATENATE(
+static const char fs_source[] = CONCATENATE(
         SH_VER,
     out vec4 FragColor;
-    in vec4 v_color_out;
+
+    in vec2 _uv;
+
+    uniform sampler2D ourTexture;
 
     void main()
     {
-        FragColor = v_color_out;
+        FragColor = texture(ourTexture, _uv);
     }
 );
 
@@ -39,7 +42,7 @@ static gfx_shader_desc unlit_shader_desc = {
         .fs = {.src = fs_source},
         .name = "unlit_shader",
         .attrs = {
-                [color_attr] = {.size = 4, .num_elements = 4},
                 [position_attr] = {.size = 4, .num_elements = 3},
+                [uv_attr] = {.size = 4, .num_elements = 2},
         }
 };

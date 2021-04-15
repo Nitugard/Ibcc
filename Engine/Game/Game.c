@@ -6,12 +6,13 @@
 #include <Device/Device.h>
 #include <Graphics/Graphics.h>
 #include <Game/Shaders/UnlitShader.h>
-#include <Plugin/Plugin.h>
+#include <Os/Plugin.h>
 #include <Asset/Asset.h>
-#include <Log/Log.h>
+#include <Os/Log.h>
 #include <Os/Time.h>
 #include <Os/Allocator.h>
 #include <Game/Primitives/Cube.h>
+#include <Texture/Texture.h>
 
 #include <SoftFloat/SoftMatrix.h>
 
@@ -22,7 +23,8 @@ void input_callback(char a)
 
 plg_desc req_plugins[] = {{.name = "Graphics", .min_version = 1},
                           {.name = "Device", .min_version = 1},
-                          {.name = "Asset", .min_version = 1}
+                          {.name = "Asset", .min_version = 1},
+                          {.name = "Texture", .min_version = 1}
                           };
 
 void plg_on_start(plg_info* info) {
@@ -59,20 +61,6 @@ bool plg_on_load()
             .data = cube_vertices,
     };
 
-    gfx_buffer_desc buffer_i_desc ={
-            .size = sizeof(cube_indices),
-            .type = INDEX,
-            .update_mode = STATIC_DRAW,
-            .data = cube_indices,
-    };
-
-    gfx_buffer_desc buffer_c_desc ={
-            .size = sizeof(cube_colors),
-            .type = VERTEX,
-            .update_mode = STREAM_DRAW,
-            .data = cube_colors,
-    };
-
     gfx_buffer_desc buffer_u_desc ={
             .size = sizeof(SH_MVP_T),
             .type = UNIFORM,
@@ -80,10 +68,17 @@ bool plg_on_load()
             .data = &mvp,
     };
 
+
+    gfx_buffer_desc buffer_uv_desc ={
+            .size = sizeof(cube_uvs),
+            .type = VERTEX,
+            .update_mode = STATIC_DRAW,
+            .data = cube_uvs,
+    };
+
     gfx_buffer_handle buffer_v = gfx_buffer_create(&buffer_v_desc);
-    gfx_buffer_handle buffer_c = gfx_buffer_create(&buffer_c_desc);
     gfx_buffer_handle buffer_u = gfx_buffer_create(&buffer_u_desc);
-    gfx_buffer_handle buffer_i = gfx_buffer_create(&buffer_i_desc);
+    gfx_buffer_handle buffer_uv = gfx_buffer_create(&buffer_uv_desc);
 
 
     gfx_pipeline_desc pipeline_desc = {
@@ -94,17 +89,28 @@ bool plg_on_load()
                             .enabled = true,
                             .buffer = buffer_v,
                     },
-                    [color_attr] = {
+
+                    [uv_attr] = {
                             .enabled = true,
-                            .buffer = buffer_c,
+                            .buffer = buffer_uv
                     },
 
             },
             .uniform_blocks = {
                     [0] = {.name = "matrices", .enabled = true, .buffer = buffer_u }
             },
-            .index_buffer = buffer_i
     };
+
+    tex_data* tex = (tex_data*)asset_load("./Assets/Textures/wooden_box.png");
+    gfx_texture_desc tex_desc = {
+            .width = tex->width,
+            .height = tex->height,
+            .data = tex->data,
+            .channels = tex->num_channels
+    };
+
+    gfx_texture_handle tex_hndl = gfx_texture_create(&tex_desc);
+
 
     gfx_pass_action default_pass = {};
     gfx_pipeline_handle pipeline = gfx_pipeline_create(&pipeline_desc);
@@ -116,23 +122,23 @@ bool plg_on_load()
             device_window_close();
         }
 
-        sf_vec3 co = sf_vec3_new(sf_new(0), sf_new(0), sf_new(-10));
+        sf_vec3 co = sf_vec3_new(sf_new(0), sf_new(0), sf_new(-4));
         sf_mat4 m4o = sf_mat_ortographic(sf_new(-1), sf_new(1), sf_new(-1), sf_new(1), sf_new_fraction(1, 10),
                                          sf_new(100));
         sf_mat4 m4p = sf_mat_perspective(sf_new(60), sf_new_fraction(800, 600), sf_new_fraction(1, 10), sf_new(100));
         sf_mat4 m4t = sf_mat_translate(&co);
         sf_mat4 m4r = sf_mat_rotate_y(sf_new_fraction(device_get_time() * 100, 100));
 
-        sf_mat4 m4 = SF_MAT_MUL(&m4o, &m4t, &m4r);
+        sf_mat4 m4 = SF_MAT_MUL(&m4p, &m4t, &m4r );
 
         sf_array_to_float_array(m4.data, 16, mvp.projection);
 
         gfx_begin_default_pass(&default_pass);
         gfx_apply_pipeline(pipeline);
-        gfx_buffer_update(buffer_c, &buffer_c_desc);
-        gfx_buffer_update(buffer_u, &buffer_u_desc);
 
-        gfx_draw_triangles_indexed(CUBE_TRIANGLES);
+        gfx_texture_bind(tex_hndl);
+        gfx_buffer_update(buffer_u, &buffer_u_desc);
+        gfx_draw_triangles(0, CUBE_TRIANGLES);
         gfx_end_pass();
 
         device_window_mouse_update();
@@ -144,10 +150,11 @@ bool plg_on_load()
     //cleanup resources
     gfx_shader_destroy(shader);
     gfx_buffer_destroy(buffer_v);
-    gfx_buffer_destroy(buffer_c);
     gfx_buffer_destroy(buffer_u);
-    gfx_buffer_destroy(buffer_i);
+    gfx_buffer_destroy(buffer_uv);
     gfx_pipeline_destroy(pipeline);
+    gfx_texture_destroy(tex_hndl);
+    asset_unload((asset_hndl)tex);
     return true;
 }
 

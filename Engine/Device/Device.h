@@ -10,12 +10,16 @@
 #ifndef FIXEDPHYSICS_DEVICE_H
 #define FIXEDPHYSICS_DEVICE_H
 
-#include "Common.h"
+#include <stdbool.h>
+#include <stdint.h>
 
+#ifndef API
+#define API
+#endif
 
 typedef struct device_wnd_desc{
-    i32 width;
-    i32 height;
+    int32_t width;
+    int32_t height;
     bool fullscreen;
     bool async;
     const char* name;
@@ -180,9 +184,9 @@ API void device_events_input_set_callback(void(*)(char));
 API device_key_state device_events_get_key(device_key);
 API device_mouse_state device_events_get_mouse();
 
-API f64 device_get_time();
+API double device_get_time();
 
-API void device_window_resize(i32, i32);
+API void device_window_resize(int32_t, int32_t);
 API void device_window_close();
 API void device_window_refresh();
 API bool device_window_valid();
