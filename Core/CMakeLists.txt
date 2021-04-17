@@ -1,6 +1,17 @@
 set(PROJECT_NAME Core)
 
-set(SRC Src/Containers.c Src/Os.c Src/SoftFloat.c)
+set(SRC
+        Containers/Array.c
+        Containers/String.c
+        Containers/Hash.c
+        Os/Allocator.c
+        Os/File.c
+        Os/Log.c
+        Os/Plugin.c
+        Os/Time.c
+        SoftFloat/SoftFloat.c
+        SoftFloat/SoftMatrix.c
+        SoftFloat/SoftVector.c)
 
 add_library(${PROJECT_NAME} SHARED ${SRC})
 target_include_directories(${PROJECT_NAME} PRIVATE ./ThirdParty/softfloat/include)

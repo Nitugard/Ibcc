@@ -325,6 +325,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
 
 void gfx_apply_pipeline(gfx_pipeline_handle pip) {
 
+    glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -337,7 +338,7 @@ void gfx_apply_pipeline(gfx_pipeline_handle pip) {
 
 void gfx_draw_triangles(int32_t start, int32_t length)
 {
-    glDrawArrays(GL_TRIANGLES, start, length);
+    glDrawArrays(GL_TRIANGLES, 0, length);
 }
 
 void gfx_draw_triangles_indexed(int32_t length)
@@ -360,8 +361,8 @@ void gfx_begin_default_pass(const gfx_pass_action * action) {
     switch (action->action) {
         case GFX_ACTION_CLEAR:
         glClearColor(action->value.x, action->value.y, action->value.z, action->value.w);
-        glClear(GL_COLOR_BUFFER_BIT);
-        break;
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            break;
     }
 }
 

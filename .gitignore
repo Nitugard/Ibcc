@@ -3,3 +3,4 @@
 /Engine/ThirdParty/*
 /Bin/*
 /Libs/*
+cmake-build-release/

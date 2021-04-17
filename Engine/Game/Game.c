@@ -12,7 +12,8 @@
 #include <Os/Time.h>
 #include <Os/Allocator.h>
 #include <Game/Primitives/Cube.h>
-#include <Texture/Texture.h>
+#include <Asset/Texture/Texture.h>
+#include <Asset/Model/Model.h>
 
 #include <SoftFloat/SoftMatrix.h>
 
@@ -21,11 +22,11 @@ void input_callback(char a)
     fprintf(stdout, "%c", a);
 }
 
-plg_desc req_plugins[] = {{.name = "Graphics", .min_version = 1},
-                          {.name = "Device", .min_version = 1},
-                          {.name = "Asset", .min_version = 1},
-                          {.name = "Texture", .min_version = 1}
-                          };
+plg_desc req_plugins[] = {
+        {.name = "Graphics", .min_version = 1},
+        {.name = "Device", .min_version = 1},
+        {.name = "Asset", .min_version = 1},
+};
 
 void plg_on_start(plg_info* info) {
 
@@ -53,12 +54,14 @@ bool plg_on_load()
 
     //init resources
     gfx_shader_handle shader = gfx_shader_create(&unlit_shader_desc);
+    mdl_data_handle obj_handle = (mdl_data_handle) asset_load("./Assets/demongirl.obj");
+
 
     gfx_buffer_desc buffer_v_desc ={
-            .size = sizeof(cube_vertices),
+            .size = obj_handle->buffer_size,
             .type = VERTEX,
             .update_mode = STATIC_DRAW,
-            .data = cube_vertices,
+            .data = obj_handle->buffer,
     };
 
     gfx_buffer_desc buffer_u_desc ={
@@ -68,31 +71,25 @@ bool plg_on_load()
             .data = &mvp,
     };
 
-
-    gfx_buffer_desc buffer_uv_desc ={
-            .size = sizeof(cube_uvs),
-            .type = VERTEX,
-            .update_mode = STATIC_DRAW,
-            .data = cube_uvs,
-    };
-
     gfx_buffer_handle buffer_v = gfx_buffer_create(&buffer_v_desc);
     gfx_buffer_handle buffer_u = gfx_buffer_create(&buffer_u_desc);
-    gfx_buffer_handle buffer_uv = gfx_buffer_create(&buffer_uv_desc);
 
 
     gfx_pipeline_desc pipeline_desc = {
-            .contiguous_buffer = true,
+            .contiguous_buffer = false,
             .shader = shader,
             .attrs = {
                     [position_attr] = {
                             .enabled = true,
                             .buffer = buffer_v,
+                            .stride = obj_handle->stride,
+                            .offset = 0,
                     },
-
-                    [uv_attr] = {
+                    [normal_attr] = {
                             .enabled = true,
-                            .buffer = buffer_uv
+                            .buffer = buffer_v,
+                            .stride = obj_handle->stride,
+                            .offset = 12,
                     },
 
             },
@@ -100,16 +97,6 @@ bool plg_on_load()
                     [0] = {.name = "matrices", .enabled = true, .buffer = buffer_u }
             },
     };
-
-    tex_data* tex = (tex_data*)asset_load("./Assets/Textures/wooden_box.png");
-    gfx_texture_desc tex_desc = {
-            .width = tex->width,
-            .height = tex->height,
-            .data = tex->data,
-            .channels = tex->num_channels
-    };
-
-    gfx_texture_handle tex_hndl = gfx_texture_create(&tex_desc);
 
 
     gfx_pass_action default_pass = {};
@@ -122,9 +109,9 @@ bool plg_on_load()
             device_window_close();
         }
 
-        sf_vec3 co = sf_vec3_new(sf_new(0), sf_new(0), sf_new(-4));
+        sf_vec3 co = sf_vec3_new(sf_new(0), sf_new_fraction(-1, 2), sf_new(-2));
         sf_mat4 m4o = sf_mat_ortographic(sf_new(-1), sf_new(1), sf_new(-1), sf_new(1), sf_new_fraction(1, 10),
-                                         sf_new(100));
+                                         sf_new(10000));
         sf_mat4 m4p = sf_mat_perspective(sf_new(60), sf_new_fraction(800, 600), sf_new_fraction(1, 10), sf_new(100));
         sf_mat4 m4t = sf_mat_translate(&co);
         sf_mat4 m4r = sf_mat_rotate_y(sf_new_fraction(device_get_time() * 100, 100));
@@ -136,9 +123,9 @@ bool plg_on_load()
         gfx_begin_default_pass(&default_pass);
         gfx_apply_pipeline(pipeline);
 
-        gfx_texture_bind(tex_hndl);
         gfx_buffer_update(buffer_u, &buffer_u_desc);
-        gfx_draw_triangles(0, CUBE_TRIANGLES);
+        int32_t t = obj_handle->buffer_size / obj_handle->stride;
+        gfx_draw_triangles(0, (obj_handle->buffer_size / obj_handle->stride));
         gfx_end_pass();
 
         device_window_mouse_update();
@@ -151,10 +138,8 @@ bool plg_on_load()
     gfx_shader_destroy(shader);
     gfx_buffer_destroy(buffer_v);
     gfx_buffer_destroy(buffer_u);
-    gfx_buffer_destroy(buffer_uv);
     gfx_pipeline_destroy(pipeline);
-    gfx_texture_destroy(tex_hndl);
-    asset_unload((asset_hndl)tex);
+    asset_unload((asset_hndl) obj_handle);
     return true;
 }
 

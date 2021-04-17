@@ -21,6 +21,10 @@ typedef struct asset_data{
 arr_handle registered_types; //asset_register_desc[]
 arr_handle loaded_assets; //asset_data[]
 
+extern void init_json_asset();
+extern void init_model_asset();
+extern void init_texture_asset();
+
 plg_desc req_plugins[] = {};
 void plg_on_start(plg_info* info) {
 
@@ -31,17 +35,21 @@ void plg_on_start(plg_info* info) {
 }
 
 bool plg_on_load(plg_info const* info) {
+
     registered_types = arr_new(sizeof(asset_register_desc), 32);
     loaded_assets = arr_new(sizeof(struct asset_data), 32);
+
+    init_json_asset();
+    init_model_asset();
+    init_texture_asset();
+
     return true;
 }
 
 void plg_on_stop(plg_info* info) {
-    for (int32_t i = 0; i < arr_size(loaded_assets); ++i) {
-        struct asset_data const *data = (struct asset_data const *) arr_get(loaded_assets, i);
-        asset_unload(data->hndl);
+    while(arr_size(loaded_assets) > 0) {
+        asset_unload(((struct asset_data *) arr_get(loaded_assets, 0))->hndl);
     }
-
     arr_delete(registered_types);
     arr_delete(loaded_assets);
 }
@@ -102,10 +110,7 @@ bool asset_load_execute(const char* path, void* data) {
         return false;
     }
 
-    file_hndl fhndl = file_open(path, "r");
-    *((asset_hndl *) data) = ((struct asset_register_desc const *) arr_get(registered_types, i))->asset_on_load(fhndl);
-    file_close(fhndl);
-
+    *((asset_hndl *) data) = ((struct asset_register_desc const *) arr_get(registered_types, i))->asset_on_load(path);
     return true;
 }
 
@@ -117,7 +122,7 @@ asset_hndl asset_load(const char *name) {
         return ((struct asset_data *const) arr_get(loaded_assets, pi))->hndl;
     }
 
-    asset_hndl hndl = NULL;
+    asset_hndl hndl = 0;
     if (!asset_load_execute(name, &hndl)) {
         LOG_ERROR("Asset could not be loaded %s\n", name);
     } else {
@@ -146,6 +151,6 @@ void asset_unload(asset_hndl hndl) {
     str_delete(path_handle);
     str_delete(extension_handle);
 
-    arr_remove(loaded_assets, i);
+    arr_remove_swap(loaded_assets, i);
 }
 

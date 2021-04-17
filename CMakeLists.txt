@@ -17,7 +17,6 @@ include_directories(Core)
 
 add_subdirectory(Engine)
 add_subdirectory(Core)
-add_subdirectory(Tools)
 
 link_directories(./Libs)
 

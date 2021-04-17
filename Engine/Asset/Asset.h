@@ -20,7 +20,7 @@ typedef struct asset* asset_hndl;
 
 typedef struct asset_register_desc{
     char const extension[32];
-    asset_hndl(*asset_on_load)(void* file);
+    asset_hndl(*asset_on_load)(char* path);
     void(*asset_on_unload)(asset_hndl asset);
 } asset_register_desc;
 

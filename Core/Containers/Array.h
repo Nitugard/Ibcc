@@ -10,13 +10,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifndef OS_ALLOCATOR
-#include <stdlib.h>
-#define OS_MALLOC(size) malloc(size)
-#define OS_REALLOC(x, size) realloc(x, size)
-#define OS_FREE(x) free(x)
-#define OS_ALLOCATOR
-#endif
+
+extern void* os_allocate_proxy(uint32_t, char const*, uint32_t);
+extern void* os_reallocate_proxy(void*, uint32_t, char const*, uint32_t);
+extern void os_free_proxy(void*, char const*, uint32_t);
+
+#define OS_MALLOC(size) os_allocate_proxy(size, __FILE__, __LINE__)
+#define OS_REALLOC(ptr, new_size) os_reallocate_proxy(ptr, new_size, __FILE__, __LINE__)
+#define OS_FREE(ptr) os_free_proxy(ptr, __FILE__, __LINE__)
 
 #ifndef API
 #define API
@@ -144,167 +145,3 @@ API void arr_delete(arr_handle handle);
 API int32_t arr_find_by_mem_8(arr_handle handle, void* element);
 
 #endif //ARRAY_H
-
-#ifdef ARRAY_IMPLEMENTATION
-
-#include <string.h>
-
-#ifndef CORE_ASSERT
-#include <assert.h>
-#define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-typedef struct arr_data
-{
-    int32_t element_size;
-    int32_t cur_count;
-    int32_t max_count;
-
-} arr_data;
-
-#define PTR(arr, i) ((void*)((arr) + 1) + (arr)->element_size * (i))
-
-void arr_capacity(arr_handle handle, int32_t capacity) {
-    if(capacity == handle->max_count)
-        return;
-    
-    handle = OS_REALLOC(handle, sizeof(arr_data) + handle->element_size * capacity);
-    handle->max_count = capacity;
-
-    if(handle->cur_count > handle->max_count)
-        handle->cur_count = handle->max_count;
-
-    CORE_ASSERT(handle != 0 && "Could not reallocate array");
-}
-
-arr_handle arr_new(int32_t element_size, int32_t capacity) {
-    arr_handle arr = OS_MALLOC(sizeof(arr_data) + (element_size * capacity));
-    arr->element_size = element_size;
-    arr->cur_count = 0;
-    arr->max_count = capacity;
-    return arr;
-}
-
-void arr_add(arr_handle arr, void * e) {
-    if(arr->cur_count == arr->max_count)
-        arr_capacity(arr, arr->cur_count + 1);
-    memcpy(PTR(arr, arr->cur_count), e, arr->element_size);
-    arr->cur_count++;
-}
-
-void arr_remove(arr_handle arr, int32_t index) {
-    CORE_ASSERT(index >= 0 && index < arr->cur_count);
-    for(int32_t i=index; i < arr->cur_count - 1; ++i) {
-        memcpy(PTR(arr, arr->cur_count), PTR(arr, arr->cur_count + 1), arr->element_size);
-    }
-    --arr->cur_count;
-}
-
-int32_t arr_size(arr_handle handle) {
-    return handle->cur_count;
-}
-
-void * arr_get(arr_handle arr, int32_t index) {
-    CORE_ASSERT(index >= 0 && index < arr->max_count);
-    return PTR(arr, index);
-}
-
-void arr_set(arr_handle arr, int32_t index, void * e) {
-    CORE_ASSERT(index >= 0 && index < arr->cur_count);
-    memcpy(PTR(arr, index), e, arr->element_size);
-}
-
-void arr_delete(arr_handle handle) {
-    OS_FREE(handle);
-}
-
-int32_t arr_find_by_mem_8(arr_handle handle, void * element) {
-    const char* t = element;
-    for(int32_t i=0; i < arr_size(handle); ++i)
-    {
-        const char* e = (const char*)arr_get(handle, i);
-        bool found = true;
-        for(int32_t j=0; j<handle->element_size; ++j)
-        {
-            if(t[j] != e[j]){
-                found = false;
-                break;
-            }
-        }
-        if(found) return i;
-    }
-    return -1;
-}
-
-void arr_trim(arr_handle handle) {
-    if(handle->cur_count < handle->max_count)
-        arr_capacity(handle, handle->cur_count);
-}
-
-int32_t arr_max_size(arr_handle handle) {
-    return handle->max_count;
-}
-
-void *arr_internal(arr_handle handle, int32_t offset) {
-    CORE_ASSERT(offset < handle->max_count);
-    return PTR(handle, offset);
-}
-
-void arr_add_range(arr_handle handle, void * *element, int32_t length) {
-    arr_insert_range(handle, handle->cur_count, element, length);
-}
-
-void arr_resize(arr_handle handle, int32_t length) {
-    if(length > handle->max_count)
-        arr_capacity(handle, length);
-    handle->cur_count = length;
-}
-
-void arr_remove_range(arr_handle handle, int32_t index, int32_t length) {
-    CORE_ASSERT(handle->cur_count > 0);
-    CORE_ASSERT(index +length < handle->cur_count);
-    for (int32_t i = index; i < handle->cur_count - length; ++i)
-        memcpy(PTR(handle, i), PTR(handle, i + length), handle->element_size);
-    handle->cur_count -= length;
-}
-
-void arr_insert(arr_handle handle, int32_t index,  void *element) {
-    arr_insert_range(handle, index, &element, 1);
-}
-
-void arr_insert_range(arr_handle handle, int32_t index,  void **element, int32_t length) {
-    CORE_ASSERT(index <= handle->cur_count || index == handle->cur_count == 0);
-    if(handle->cur_count + length > handle->max_count)
-        arr_capacity(handle, handle->cur_count + length);
-
-    for(int32_t i= handle->cur_count + length - 1; i >= index + length; --i)
-        memcpy(PTR(handle, i),  PTR(handle, (i - length)), handle->element_size);
-
-    for(int32_t i=index; i< index + length; ++i)
-        memcpy(PTR(handle, i), element[i - index], handle->element_size);
-
-    handle->cur_count += length;
-}
-
-void arr_remove_last(arr_handle handle) {
-    CORE_ASSERT(handle->cur_count != 0);
-    handle->cur_count--;
-}
-
-void arr_remove_swap(arr_handle handle, int32_t index) {
-    CORE_ASSERT(handle->cur_count != 0);
-    if (handle->cur_count > 1) {
-        memcpy(PTR(handle, index), PTR(handle, handle->cur_count - 1), handle->element_size);
-    }
-    arr_remove_last(handle);
-}
-
-bool arr_empty(arr_handle handle) {
-    return handle->cur_count == 0;
-}
-
-bool arr_full(arr_handle handle) {
-    return handle->cur_count == handle->max_count;
-}
-#undef ARRAY_IMPLEMENTATION
-#endif

@@ -17,8 +17,8 @@
 
 
 
-asset_hndl asset_on_load_tex(void* hptr) {
-    file_hndl hndl = (file_hndl)hptr;
+asset_hndl asset_on_load_json(char* path) {
+    file_hndl hndl = file_open(path, "r");
     int32_t size = file_size(hndl);
     json_hndl json_hndl = OS_MALLOC(sizeof(struct json_data) + sizeof(char) * size);
     file_buffer buffer = {.size = size, .memory = json_hndl + 1};
@@ -53,10 +53,11 @@ asset_hndl asset_on_load_tex(void* hptr) {
     }
     while(err == JSMN_ERROR_NOMEM);
     json_hndl->tokens_count = err;
+    file_close(hndl);
     return (asset_hndl) json_hndl;
 }
 
-void asset_on_unload_tex(asset_hndl hndl)
+void asset_on_unload_json(asset_hndl hndl)
 {
     json_hndl jhndl = hndl;
     OS_FREE(jhndl->tokens);
@@ -102,25 +103,12 @@ void json_token_print(json_hndl hndl, int32_t token) {
 
 }
 
-plg_desc req_plugins[] = {};
-void plg_on_start(plg_info* info) {
 
-    info->name = "Json";
-    info->req_plugins = req_plugins;
-    info->req_plugins_count = sizeof(req_plugins) / sizeof(plg_desc);
-    info->version = 1;
-}
-
-bool plg_on_load(plg_info const* info) {
+void init_json_asset() {
     asset_register_desc json_desc = {
             .extension = "json",
-            .asset_on_load = asset_on_load_tex,
-            .asset_on_unload = asset_on_unload_tex
+            .asset_on_load = asset_on_load_json,
+            .asset_on_unload = asset_on_unload_json,
     };
-
-    return true;
-}
-
-void plg_on_stop(plg_info* info)
-{
+    asset_register(&json_desc);
 }
