@@ -14,6 +14,7 @@
 #include <Asset/Texture/Texture.h>
 #include <Asset/Model/Model.h>
 #include <Math/Math.h>
+#include <stddef.h>
 #include "Controller/Controller.h"
 #include "Render/Draw/Draw.h"
 
@@ -105,15 +106,18 @@ bool game_init()
                     [position_attr] = {
                             .enabled = true,
                             .buffer = buffer_v,
-                            .stride = MDL_STRIDE_SIZE,
+                            .stride = sizeof(vertex_t),
                             .offset = 0,
                     },
                     [normal_attr] = {
                             .enabled = true,
                             .buffer = buffer_v,
-                            .stride = MDL_STRIDE_SIZE,
-                            .offset = MDL_OFFSET_NORMAL,
+                            .stride = sizeof(vertex_t),
+                            .offset = offsetof(vertex_t, color),
                     },
+                    [uv_attr] = {
+                            .enabled = false
+                    }
 
             },
             .uniform_blocks = {
@@ -127,7 +131,7 @@ bool game_init()
     gfx_color color = { 0.2, 0.8, 1, 1};
     default_pass.action = GFX_ACTION_CLEAR;
     default_pass.value = color;
-
+    uint32_t dw_pos = dw_get_position(draw_handle);
     while (device_window_valid()) {
 
         if (device_events_get_key(DEVICE_KEY_ESCAPE) == DEVICE_PRESS_ACTION) {
@@ -146,6 +150,8 @@ bool game_init()
         gfx_apply_pipeline(pipeline);
         gfx_draw_triangles(0, obj_handle->vertices);
         dw_bind(draw_handle);
+        dw_clear(draw_handle, dw_pos);
+        dw_vector(draw_handle, mm_vec3_new(mvp.light_pos[0], mvp.light_pos[1], mvp.light_pos[2]), mm_vec3_new(0,0,0));
         gfx_end_pass();
 
         device_window_mouse_update();

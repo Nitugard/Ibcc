@@ -17,7 +17,6 @@ static const char vs_source[] = CONCATENATE(
          mat4 view;
          mat4 projection;
 
-         vec3 light_color;
          vec3 light_pos;
          vec3 cam_pos;
      };
@@ -47,7 +46,6 @@ static const char fs_source[] = CONCATENATE(
         mat4 view;
         mat4 projection;
 
-        vec3 light_color;
         vec3 light_pos;
         vec3 cam_pos;
     };
@@ -63,7 +61,7 @@ static const char fs_source[] = CONCATENATE(
         vec3 specular = vec3(0.8f * spec);
         vec3 diffuse = vec3(diff);
         vec3 ambient = vec3(0.8, 0.5, 0.5);
-        FragColor = vec4((diffuse + specular + ambient) * _normal,1);
+        FragColor = vec4((specular + diffuse + ambient) * _normal ,1);
     }
 );
 

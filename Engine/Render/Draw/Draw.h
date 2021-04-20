@@ -25,7 +25,9 @@ typedef struct dw_data* dw_handle;
 
 API dw_handle dw_new(dw_desc const* desc);
 API void dw_begin(dw_handle handle);//todo: in case of static drawing
+API void dw_clear(dw_handle handle, uint32_t position);
 API void dw_vector(dw_handle handle, mm_vec3 vec, mm_vec3 color);
+API uint32_t dw_get_position(dw_handle handle);
 API void dw_vector_origin(dw_handle handle, mm_vec3 vec, mm_vec3 origin, mm_vec3 color);
 API void dw_end(dw_handle handle);
 

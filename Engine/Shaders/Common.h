@@ -23,7 +23,7 @@ typedef struct SH_MVP_T{
     float model[16];
     float view[16];
     float projection[16];
-    float light_color[3];
+
     float light_pos[3];
     float cam_pos[3];
 } SH_MVP_T;

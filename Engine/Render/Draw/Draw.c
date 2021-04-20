@@ -34,10 +34,9 @@ dw_handle dw_new(const dw_desc *desc) {
             .data = handle->buffer,
             .size = VERTEX_STRIDE_B * MAXIMUM_VERTICES,
             .type = VERTEX,
-            .update_mode = STREAM_DRAW
+            .update_mode = DYNAMIC_DRAW
     };
     gfx_buffer_handle buff_v = gfx_buffer_create(&buffer_desc);
-
 
     gfx_pipeline_desc pip_desc = {
             .shader = sh_handle,
@@ -97,6 +96,15 @@ void dw_vector_origin(dw_handle handle, mm_vec3 vec, mm_vec3 origin, mm_vec3 col
     gfx_buffer_update(handle->vertex_buffer, &buffer_desc);
 }
 
+uint32_t dw_get_position(dw_handle handle)
+{
+    return handle->vertices;
+}
+
+void dw_clear(dw_handle handle, uint32_t position)
+{
+    handle->vertices = mm_min(position, handle->vertices);
+}
 
 void dw_bind(dw_handle handle) {
     gfx_apply_pipeline(handle->pip);
