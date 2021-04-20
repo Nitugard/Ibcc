@@ -8,7 +8,6 @@
 #include "Device.h"
 
 #include <GLFW/glfw3.h>
-#include <Os/Plugin.h>
 #include <Os/Log.h>
 #include <Os/Allocator.h>
 
@@ -30,6 +29,10 @@ typedef struct device_wnd {
     void (*device_events_input_callback)(char);
 
     void (*device_events_mouse_callback)(device_mouse_state);
+
+    double last_time;
+    double delta_time;
+    bool delta_time_initialized;
 } device_wnd;
 
 typedef struct device_timer {
@@ -45,18 +48,7 @@ void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_
 void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y);
 
 
-plg_desc req_plugins[] = {};
-
-void plg_on_start(plg_info *info) {
-
-    info->name = "Device";
-    info->req_plugins = req_plugins;
-    info->req_plugins_count = sizeof(req_plugins) / sizeof(plg_desc);
-    info->version = 1;
-}
-
-//todo: device terminate
-bool plg_on_load() {
+bool device_init() {
     if (!glfwInit()) {
         LOG_ERROR("Failed to initialize device\n");
         return false;
@@ -71,7 +63,7 @@ bool plg_on_load() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Device", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(800, 600, "Device | Dragutin Sredojevic | 2021", NULL, NULL);
     glfwMakeContextCurrent(window);
     DEVICE_ASSERT(window != NULL);
 
@@ -97,7 +89,7 @@ bool plg_on_load() {
     return true;
 }
 
-void plg_on_stop() {
+void device_terminate() {
     glfwDestroyWindow(wnd.handle);
     glfwTerminate();
 }
@@ -694,7 +686,9 @@ void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y) {
 }
 
 device_key_state device_events_get_key(device_key key) {
-    return glfw_key_action_to_device_state(glfwGetKey(wnd.handle, device_key_to_glfw_key(key)));
+    uint32_t gkey = device_key_to_glfw_key(key);
+    uint32_t state = glfwGetKey(wnd.handle, gkey);
+    return glfw_key_action_to_device_state(state);
 }
 
 device_mouse_state device_events_get_mouse() {
@@ -706,7 +700,15 @@ void device_window_refresh() {
 }
 
 void device_events_poll(void) {
+    if(!wnd.delta_time_initialized)
+    {
+        wnd.delta_time_initialized = true;
+    }
+    else{
+        wnd.delta_time = device_get_time() - wnd.last_time;
+    }
 
+    wnd.last_time = device_get_time();
     glfwPollEvents();
 }
 
@@ -804,5 +806,9 @@ void device_window_mouse_update() {
 
 double device_get_time() {
     return glfwGetTime();
+}
+
+double device_events_get_dt() {
+    return wnd.delta_time;
 }
 

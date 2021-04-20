@@ -5,7 +5,6 @@
 #include <Os/Allocator.h>
 #include <Asset/Asset.h>
 #include <Os/File.h>
-#include <Os/Plugin.h>
 #include <Containers/String.h>
 #include <math.h>
 #include <stdio.h>
@@ -81,7 +80,7 @@ void asset_on_unload_model(asset_hndl hndl)
 
 }
 
-void init_model_asset(plg_info const* info) {
+void init_model_asset() {
     asset_register_desc jpg_desc = {
             .extension = "obj",
             .asset_on_load = asset_on_load_model,

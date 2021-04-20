@@ -8,7 +8,6 @@
 
 #include "Graphics.h"
 
-#include <Os/Plugin.h>
 #include <Os/Log.h>
 #include <Os/Allocator.h>
 
@@ -48,18 +47,8 @@ __stdcall void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum 
 }
 
 
-gfx_pipeline_handle current_pipeline;
-plg_desc req_plugins[] = {
-                          {.name = "Device", .min_version = 1}};
-void plg_on_start(plg_info* info) {
 
-    info->name = "Graphics";
-    info->req_plugins = req_plugins;
-    info->req_plugins_count = sizeof(req_plugins) / sizeof(plg_desc);
-    info->version = 1;
-}
-
-bool plg_on_load(plg_info const* info) {
+bool gfx_init() {
     if (gl3wInit()) {
         LOG_ERROR("Failed to initialize OpenGL\n");
         return false;
@@ -72,7 +61,7 @@ bool plg_on_load(plg_info const* info) {
 }
 
 
-void plg_on_stop(plg_info* info){
+void gfx_terminate(){
 
 }
 
@@ -171,6 +160,9 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
     if (compiled) {
         LOG_INFO("Shader created: %s, id: %i\n", desc->name, shader->id);
     }else gl_print_program_err(shader->id);
+    glDeleteShader(fs);
+    glDeleteShader(vs);
+
     return shader;
 }
 
@@ -339,6 +331,10 @@ void gfx_apply_pipeline(gfx_pipeline_handle pip) {
 void gfx_draw_triangles(int32_t start, int32_t length)
 {
     glDrawArrays(GL_TRIANGLES, 0, length);
+}
+
+void gfx_draw_lines(int32_t start, int32_t length) {
+    glDrawArrays(GL_LINES, 0, length);
 }
 
 void gfx_draw_triangles_indexed(int32_t length)

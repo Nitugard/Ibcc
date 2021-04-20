@@ -18,7 +18,5 @@ include_directories(Core)
 add_subdirectory(Engine)
 add_subdirectory(Core)
 
-link_directories(./Libs)
-
 add_executable(${PROJECT_NAME} ${SRC})
-target_link_libraries(${PROJECT_NAME} PRIVATE Core)
+target_link_libraries(${PROJECT_NAME} PRIVATE Engine Core)

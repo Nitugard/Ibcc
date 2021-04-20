@@ -24,6 +24,9 @@ typedef struct asset_register_desc{
     void(*asset_on_unload)(asset_hndl asset);
 } asset_register_desc;
 
+API bool asset_init();
+API void asset_terminate();
+
 API bool asset_register(struct asset_register_desc const* desc);
 
 API bool asset_exists(char const* name);

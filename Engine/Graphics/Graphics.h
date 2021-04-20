@@ -110,6 +110,9 @@ typedef struct gfx_pass_action{
     gfx_pass_action_type action;
 } gfx_pass_action;
 
+API bool gfx_init();
+API void gfx_terminate();
+
 API gfx_shader_handle gfx_shader_create(gfx_shader_desc const *);
 API void gfx_shader_destroy(gfx_shader_handle);
 
@@ -126,6 +129,8 @@ API void gfx_end_pass();
 
 API void gfx_draw_triangles(int32_t start, int32_t length);
 API void gfx_draw_triangles_indexed(int32_t length);
+API void gfx_draw_lines(int32_t start, int32_t length);
+
 
 API gfx_pipeline_handle gfx_pipeline_create(gfx_pipeline_desc const *);
 API void gfx_apply_pipeline(gfx_pipeline_handle pip);

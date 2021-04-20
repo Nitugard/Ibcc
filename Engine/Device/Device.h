@@ -175,6 +175,9 @@ typedef struct device_cursor_state{
     bool wrap;
 } device_cursor_state;
 
+API bool device_init();
+API void device_terminate();
+
 API void device_events_poll(void);
 
 API void device_events_keys_set_callback(void(*)(device_key, device_key_state));
@@ -183,6 +186,7 @@ API void device_events_input_set_callback(void(*)(char));
 
 API device_key_state device_events_get_key(device_key);
 API device_mouse_state device_events_get_mouse();
+API double device_events_get_dt();
 
 API double device_get_time();
 

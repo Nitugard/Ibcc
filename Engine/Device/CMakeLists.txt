@@ -1,9 +1,4 @@
-set(PROJECT_NAME Device)
-
-add_library(${PROJECT_NAME} SHARED Device.c)
-
-target_include_directories(${PROJECT_NAME} PRIVATE
-        ../ThirdParty/glfw/include/
+target_sources(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/Device.c
         )
-target_link_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/bin/)
-target_link_libraries(${PROJECT_NAME} PRIVATE Core glfw)
+

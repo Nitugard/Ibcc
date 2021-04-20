@@ -1,5 +1,4 @@
-set(PROJECT_NAME Graphics)
-
-add_library(${PROJECT_NAME} SHARED Graphics.c ../ThirdParty/gl3w/src/gl3w.c)
-target_include_directories(${PROJECT_NAME} PRIVATE ../ThirdParty/gl3w/include)
-target_link_libraries(${PROJECT_NAME} PRIVATE Core Asset)
+target_sources(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/Graphics.c
+        ${CMAKE_CURRENT_LIST_DIR}/../ThirdParty/gl3w/src/gl3w.c
+        )

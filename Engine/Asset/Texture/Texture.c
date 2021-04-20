@@ -7,9 +7,7 @@
 #include "Texture.h"
 
 #include <Os/Allocator.h>
-#include <Os/File.h>
 #include <Asset/Asset.h>
-#include <Os/Plugin.h>
 #include <Os/Log.h>
 
 #define STB_IMAGE_IMPLEMENTATION

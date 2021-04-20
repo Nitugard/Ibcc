@@ -8,7 +8,7 @@
 
 static const char vs_source[] = CONCATENATE(
         SH_VER,
-     layout (location = position_attr) in vec3 v_pos;
+     layout (location = position_attr) in vec4 v_pos;
      layout (location = uv_attr) in vec2 v_uv;
      layout (location = normal_attr) in vec3 v_normal;
 

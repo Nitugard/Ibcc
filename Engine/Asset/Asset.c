@@ -7,8 +7,6 @@
 
 #include "Asset.h"
 
-#include <Os/Plugin.h>
-#include <Os/File.h>
 #include <Os/Log.h>
 #include <Containers/String.h>
 #include <Containers/Array.h>
@@ -25,34 +23,24 @@ extern void init_json_asset();
 extern void init_model_asset();
 extern void init_texture_asset();
 
-plg_desc req_plugins[] = {};
-void plg_on_start(plg_info* info) {
-
-    info->name = "Asset";
-    info->req_plugins = req_plugins;
-    info->req_plugins_count = sizeof(req_plugins) / sizeof(plg_desc);
-    info->version = 1;
-}
-
-bool plg_on_load(plg_info const* info) {
-
+API bool asset_init(){
     registered_types = arr_new(sizeof(asset_register_desc), 32);
     loaded_assets = arr_new(sizeof(struct asset_data), 32);
 
     init_json_asset();
     init_model_asset();
     init_texture_asset();
-
     return true;
 }
 
-void plg_on_stop(plg_info* info) {
+API void asset_terminate(){
     while(arr_size(loaded_assets) > 0) {
         asset_unload(((struct asset_data *) arr_get(loaded_assets, 0))->hndl);
     }
     arr_delete(registered_types);
     arr_delete(loaded_assets);
 }
+
 
 int32_t find_registered_type_description(char const* fext)
 {
