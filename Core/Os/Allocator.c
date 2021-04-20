@@ -35,6 +35,7 @@ typedef struct os_chunk{
 
 void *os_allocate_proxy(uint32_t size, char const *file, uint32_t line) {
     os_proxy_header* mem = ALLOC(size + sizeof(os_proxy_header));
+    CORE_ASSERT(mem != 0);
     mem->file = file;
     mem->line = line;
     mem->size = size;
@@ -90,8 +91,8 @@ void os_free_proxy(void *src, char const *file, uint32_t line) {
     FREE(mem);
 }
 
-char* os_memcpy(void *src, void const *dest, int32_t size) {
-    return memcpy(src, dest, size);
+char* os_memcpy(void *dest, void const *src, int32_t size) {
+    return memcpy(dest, src, size);
 }
 
 char* os_memset(void *src, int32_t value, int32_t size) {

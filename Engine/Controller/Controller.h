@@ -25,7 +25,7 @@ typedef struct controller_camera_init_desc{
 typedef struct controller_camera_data* controller_camera_handle;
 
 API controller_camera_handle controller_camera_new(controller_camera_init_desc const* desc);
-API mm_mat4 controller_camera_get_mat(controller_camera_handle handle);
+API void controller_camera_update_mvp(controller_camera_handle handle, float* proj, float* view, float* cam_pos);
 API void controller_camera_update(controller_camera_handle handle, float dt);
 API void controller_camera_destroy(controller_camera_handle handle);
 

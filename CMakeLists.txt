@@ -15,8 +15,8 @@ set(CMAKE_SHARED_LIBRARY_PREFIX "")
 include_directories(Engine)
 include_directories(Core)
 
+add_executable(${PROJECT_NAME} ${SRC})
 add_subdirectory(Engine)
 add_subdirectory(Core)
-
-add_executable(${PROJECT_NAME} ${SRC})
+add_subdirectory(Game)
 target_link_libraries(${PROJECT_NAME} PRIVATE Engine Core)

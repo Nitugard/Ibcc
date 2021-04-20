@@ -11,9 +11,9 @@
 #include <Os/Log.h>
 
 #define STB_IMAGE_IMPLEMENTATION
-//#define STBI_MALLOC(size) OS_MALLOC(size)
-//#define STBI_REALLOC(x, size) OS_REALLOC(x, size)
-//#define STBI_FREE(x) OS_FREE(x)
+#define STBI_MALLOC(size) OS_MALLOC(size)
+#define STBI_REALLOC(x, size) OS_REALLOC(x, size)
+#define STBI_FREE(x) OS_FREE(x)
 #include <ThirdParty/stb_image/stb_image.h>
 
 asset_hndl asset_on_load_tex(char* path) {

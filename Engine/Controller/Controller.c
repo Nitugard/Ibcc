@@ -36,6 +36,14 @@ void controller_camera_fp_update(controller_camera_handle handle, float dt) {
         delta.y = mm_add(delta.y, MM_ONE);
     if (device_events_get_key(DEVICE_KEY_LEFT_SHIFT) == DEVICE_PRESS_ACTION)
         delta.y = mm_sub(delta.y, MM_ONE);
+    if (device_events_get_key(DEVICE_KEY_E) == DEVICE_PRESS_ACTION)
+        handle->rot_euler.y = mm_sub(handle->rot_euler.y, MM_MUL(mm_new(1), dt, handle->init_desc.rotation_speed));
+    if (device_events_get_key(DEVICE_KEY_Q) == DEVICE_PRESS_ACTION)
+        handle->rot_euler.y = mm_add(handle->rot_euler.y, MM_MUL(mm_new(1), dt, handle->init_desc.rotation_speed));
+    if (device_events_get_key(DEVICE_KEY_R) == DEVICE_PRESS_ACTION)
+        handle->rot_euler.x = mm_sub(handle->rot_euler.x, MM_MUL(mm_new(1), dt, handle->init_desc.rotation_speed));
+    if (device_events_get_key(DEVICE_KEY_F) == DEVICE_PRESS_ACTION)
+        handle->rot_euler.x = mm_add(handle->rot_euler.x, MM_MUL(mm_new(1), dt, handle->init_desc.rotation_speed));
 
 
     //rotation
@@ -57,8 +65,7 @@ void controller_camera_fp_update(controller_camera_handle handle, float dt) {
     mm_mat4 rot = mm_mat_mul(&roty, &rotx);
     mm_vec3 target = mm_mat_mul_vec(&rot, &fwd);
     mm_vec3 center = mm_vec3_add(handle->pos, target);
-    mm_mat4 look_at = mm_mat_look_at(center, handle->pos, up);
-    handle->view = mm_mat_mul(&(handle->projection), &look_at);
+    handle->view = mm_mat_look_at(center, handle->pos, up);
 
     delta = mm_mat_mul_vec(&rot, &delta);
     delta = mm_vec3_mul(delta, mm_vec3_new_scalar(mm_mul(handle->init_desc.movement_speed, dt)));
@@ -80,8 +87,10 @@ void controller_camera_update(controller_camera_handle handle, float dt) {
     }
 }
 
-mm_mat4 controller_camera_get_mat(controller_camera_handle handle) {
-    return handle->view;
+void controller_camera_update_mvp(controller_camera_handle handle, float* proj, float* view, float* cam_pos) {
+    mm_array_to_float_array(handle->projection.data, 16, proj);
+    mm_array_to_float_array(handle->view.data, 16, view);
+    mm_array_to_float_array(handle->pos.data, 3, cam_pos);
 }
 
 void controller_camera_destroy(controller_camera_handle handle) {

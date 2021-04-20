@@ -6,7 +6,7 @@
 #include "Game.h"
 #include <Device/Device.h>
 #include <Graphics/Graphics.h>
-#include <Game/Render/Shaders/UnlitShader.h>
+#include <Shaders/UnlitShader.h>
 #include <Asset/Asset.h>
 #include <Os/Log.h>
 #include <Os/Time.h>
@@ -16,6 +16,7 @@
 #include <Math/Math.h>
 #include "Controller/Controller.h"
 #include "Render/Draw/Draw.h"
+
 
 void input_callback(char a)
 {
@@ -29,7 +30,11 @@ bool game_init()
 
     srand(time(NULL));
 
-    SH_MVP_T mvp;
+    SH_MVP_T mvp = SH_MVP_IDENTITY;
+    mvp.light_pos[0] = 0;
+    mvp.light_pos[1] = 1;
+    mvp.light_pos[2] = 0;
+
     device_cursor_state cursorState = {
             .visible = 0,
             .confined = 0,
@@ -100,14 +105,14 @@ bool game_init()
                     [position_attr] = {
                             .enabled = true,
                             .buffer = buffer_v,
-                            .stride = obj_handle->stride,
+                            .stride = MDL_STRIDE_SIZE,
                             .offset = 0,
                     },
                     [normal_attr] = {
                             .enabled = true,
                             .buffer = buffer_v,
-                            .stride = obj_handle->stride,
-                            .offset = 12,
+                            .stride = MDL_STRIDE_SIZE,
+                            .offset = MDL_OFFSET_NORMAL,
                     },
 
             },
@@ -130,14 +135,16 @@ bool game_init()
         }
 
         controller_camera_update(camera, (float)device_events_get_dt());
-        mm_mat4 cam_mat = controller_camera_get_mat(camera);
+        controller_camera_update_mvp(camera, mvp.projection, mvp.view, mvp.cam_pos);
 
-        mm_array_to_float_array(cam_mat.data, 16, mvp.projection);
+        mvp.light_pos[0] = mm_sin(device_get_time()) * 2;
+        mvp.light_pos[2] = mm_cos(device_get_time()) * 2;
+
         gfx_buffer_update(buffer_u, &buffer_u_desc);
 
         gfx_begin_default_pass(&default_pass);
         gfx_apply_pipeline(pipeline);
-        gfx_draw_triangles(0, (obj_handle->buffer_size / obj_handle->stride));
+        gfx_draw_triangles(0, obj_handle->vertices);
         dw_bind(draw_handle);
         gfx_end_pass();
 

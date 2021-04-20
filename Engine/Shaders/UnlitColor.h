@@ -11,13 +11,18 @@ static const char vs_source[] = CONCATENATE(
     layout (location = color_attr) in vec3 v_color;
 
     layout(row_major) uniform matrices{
+        mat4 model;
+        mat4 view;
         mat4 projection;
-        mat4 modelview;
+
+        vec3 light_color;
+        vec3 light_pos;
+        vec3 cam_pos;
     };
 
     out vec3 _color;
     void main() {
-        gl_Position = projection * vec4(v_pos.xyz, 1.0);
+        gl_Position = projection * view * model * vec4(v_pos.xyz, 1.0);
         _color = v_color;
     }
 );

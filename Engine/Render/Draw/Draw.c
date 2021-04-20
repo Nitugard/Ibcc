@@ -8,7 +8,7 @@
 #include "Draw.h"
 #include <Os/Allocator.h>
 #include <Graphics/Graphics.h>
-#include "../Shaders/UnlitColor.h"
+#include "Shaders/UnlitColor.h"
 
 
 typedef struct dw_data{

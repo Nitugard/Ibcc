@@ -9,8 +9,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         )
 
 add_subdirectory(ThirdParty/glfw/)
-
-add_subdirectory(Game)
 add_subdirectory(Graphics)
 add_subdirectory(Device)
 add_subdirectory(Asset)

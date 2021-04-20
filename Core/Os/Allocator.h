@@ -38,7 +38,7 @@ API os_chunk_handle os_chunk_new(int32_t initial_capacity);
 API bool os_chunk_alloc(os_chunk_handle handle, uint32_t size, void** pptr);
 API void os_chunk_free(os_chunk_handle handle);
 
-API char* os_memcpy(void *src, void const *dest, int32_t size);
+API char* os_memcpy(void *dest, void const *src, int32_t size);
 API char* os_memset(void *src, int32_t value, int32_t size);
 
 API void *os_allocate_proxy(uint32_t size, char const *file, uint32_t line);

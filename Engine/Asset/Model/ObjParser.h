@@ -8,7 +8,10 @@
 #ifndef IBC_OBJPARSER_H
 #define IBC_OBJPARSER_H
 
-#define MAXIMUM_MESH_NAME 32
+#define MAXIMUM_MESH_NAME_SIZE 32
+#define MAXIMUM_MAT_NAME_SIZE 128
+#define MAXIMUM_LINE_SIZE 1024
+#define MAXIMUM_TEX_NAME_SIZE 128
 
 #define VERTEX_BUFFER_INITIAL_CAPACITY (1 << 18) //16kb
 #define VERTEX_BUFFER_INCREMENT_CAPACITY (1 << 20) //128kb
@@ -35,7 +38,8 @@ typedef struct face_t {
 } face_t;
 
 typedef struct mesh_t {
-    char name[MAXIMUM_MESH_NAME];
+    char name[MAXIMUM_MESH_NAME_SIZE];
+    char mat_name[MAXIMUM_MAT_NAME_SIZE];
 
     uint32_t vertices_length;
     uint32_t normals_length;
@@ -48,6 +52,18 @@ typedef struct mesh_t {
     face_t* faces;
     uint32_t faces_length;
 } mesh_t;
+
+typedef struct mesh_mat_t{
+
+    char name[MAXIMUM_MAT_NAME_SIZE];
+    float ns; //!specular highlights [0, 1000]
+    float ni; //!index of refraction [0.001, 10], A value of 1.0 means that light does not bend as it passes through an object.
+    vec3_t ka; //!ambient color
+    vec3_t kd; //!diffuse color
+    vec3_t ks; //!specular color
+    float d; //!dissolve
+    char tex[MAXIMUM_TEX_NAME_SIZE];
+} mesh_mat_t;
 
 typedef struct iterator_t{
     const char* current;
@@ -85,23 +101,36 @@ int32_t line_length_copy(const char* current, char* buff) {
     return i;
 }
 
-void parse(const char *data, mesh_t *meshes, uint32_t *meshes_count) {
+
+//! data must be triangulated
+void parse_obj(const char *data, const char* material, mesh_t **meshes, uint32_t *meshes_count)
+{
     char linebuffer[1024];
     int32_t row = 0;
-    int32_t mesh_count = 0;
+    uint32_t mesh_count = 0;
     const char *current = data;
     struct mesh_t *mesh = 0;
     uint32_t buffer_size = 0;
 
-    //TODO: PARSE STRING AS TOKENS
+
+    uint32_t meshes_alloc = 4;
+    *meshes = malloc(sizeof(mesh_t) * meshes_alloc);
+
     do {
         if (row != 0) ++current; //skip \n character
         int32_t ll = line_length_copy(current, linebuffer);
         linebuffer[ll] = '\0';
-
-        if (str_cmp_len_2(current, "o ")) {
+        if (str_cmp_len_2(current, "g ")) {
+            //todo
+            assert(false && "Currently obj file does not support groups!");
+        }
+        else if (str_cmp_len_2(current, "o ")) {
             //object
-            mesh = meshes + mesh_count;
+            if(meshes_alloc == mesh_count){
+                meshes_alloc *= 2;
+                *meshes = malloc(sizeof(mesh_t) * meshes_alloc);
+            }
+            mesh = *meshes + mesh_count;
             memset(mesh, 0, sizeof(mesh_t));
             ++mesh_count;
             sprintf(mesh->name, "%.*s", ll, &linebuffer[0] + 2);
@@ -176,12 +205,75 @@ void parse(const char *data, mesh_t *meshes, uint32_t *meshes_count) {
             current += ll;
 
             ++mesh->faces_length;
-        } else {
+        }
+        else if(str_cmp_len_8("usemtl", current, 6)) {
+            sscanf(&linebuffer[0] + 7, "%s", mesh->mat_name);
+            current += ll;
+        }
+        else {
             current += ll;
         }
         ++row;
     } while (*current != '\0');
+
+    //load material
+    if(material != 0) {
+        row = 0;
+        current = material;
+        mesh_mat_t *mesh_mat = 0;
+        uint32_t mat_count = 0;
+
+        uint32_t materials_alloc = 4;
+        mesh_mat_t *materials = malloc(sizeof(mesh_mat_t) * materials_alloc);
+
+        do {
+            if (row != 0) ++current; //skip \n character
+            int32_t ll = line_length_copy(current, linebuffer);
+            linebuffer[ll] = '\0';
+            if (str_cmp_len_8(current, "newmtl", 6)) {
+                if (materials_alloc == mat_count) {
+                    materials_alloc *= 2;
+                    materials = malloc(sizeof(mesh_mat_t) * materials_alloc);
+                }
+
+                mesh_mat = materials + mat_count;
+                memset(mesh_mat, 0, sizeof(mesh_mat_t));
+                ++mat_count;
+                sprintf(mesh_mat->name, "%.*s", ll, &linebuffer[0] + 7);
+            } else if (str_cmp_len_2(current, "Ns")) {
+                sscanf(&linebuffer[0] + 3, "%f", &(mesh_mat->ns));
+            } else if (str_cmp_len_2(current, "Ka")) {
+                sscanf(&linebuffer[0] + 3, "%f %f %f", &(mesh_mat->ka.x), &(mesh_mat->ka.y), &(mesh_mat->ka.z));
+            } else if (str_cmp_len_2(current, "Kd")) {
+                sscanf(&linebuffer[0] + 3, "%f %f %f", &(mesh_mat->kd.x), &(mesh_mat->kd.y), &(mesh_mat->kd.z));
+            } else if (str_cmp_len_2(current, "Ks")) {
+                sscanf(&linebuffer[0] + 3, "%f %f %f", &(mesh_mat->ks.x), &(mesh_mat->ks.y), &(mesh_mat->ks.z));
+            } else if (str_cmp_len_2(current, "Ke")) {
+            } else if (str_cmp_len_2(current, "Ni")) {
+                sscanf(&linebuffer[0] + 3, "%f", &(mesh_mat->ni));
+            } else if (str_cmp_len_2(current, "d ")) {
+                sscanf(&linebuffer[0] + 2, "%f", &(mesh_mat->d));
+            }
+
+
+            current += ll;
+            ++row;
+        } while (*current != '\0');
+    }
+
     *meshes_count = mesh_count;
+}
+
+void free_obj(mesh_t* meshes, uint32_t count) {
+    for(uint32_t i=0; i<count; ++i)
+    {
+        free(meshes[i].vertices);
+        free(meshes[i].normals);
+        free(meshes[i].uvs);
+        free(meshes[i].faces);
+
+    }
+    free(meshes);
 }
 
 #endif //IBC_OBJPARSER_H
