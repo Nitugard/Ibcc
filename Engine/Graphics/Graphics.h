@@ -18,6 +18,7 @@
 
 #define MAXIMUM_PIPELINE_ATTRIBUTES 32
 #define MAXIMUM_PIPELINE_UNIFORM_BLOCKS 8
+#define MAXIMUM_PIPELINE_UNIFORMS 128
 
 typedef enum gfx_buffer_type {
     VERTEX,
@@ -36,6 +37,7 @@ typedef enum gfx_buffer_update_mode {
     STREAM_READ,
     STREAM_COPY,
 } gfx_buffer_update_mode;
+
 
 typedef enum gfx_pass_action_type
 {
@@ -57,7 +59,6 @@ typedef struct gfx_shader_attr {
 } gfx_shader_attr;
 
 typedef struct gfx_pipeline_attr {
-    char enabled;
     int32_t offset;
     int32_t stride;
     gfx_buffer_handle buffer;
@@ -91,8 +92,13 @@ typedef struct gfx_texture_desc{
 typedef struct gfx_pipeline_uniform_block{
     const char* name;
     gfx_buffer_handle buffer;
-    bool enabled;
 } gfx_pipeline_uniform_block;
+
+typedef struct gfx_pipeline_uniform{
+    const char* name;
+    void* buffer;
+    uint32_t offset;
+} gfx_pipeline_uniform;
 
 typedef struct gfx_pipeline_desc {
     gfx_shader_handle shader;
@@ -100,9 +106,9 @@ typedef struct gfx_pipeline_desc {
     gfx_buffer_handle index_buffer;
     gfx_pipeline_attr attrs[MAXIMUM_PIPELINE_ATTRIBUTES];
     gfx_pipeline_uniform_block uniform_blocks[MAXIMUM_PIPELINE_UNIFORM_BLOCKS];
+    gfx_pipeline_uniform uniforms[MAXIMUM_PIPELINE_UNIFORMS];
 
     char const *name;
-    bool contiguous_buffer;
 } gfx_pipeline_desc;
 
 typedef struct gfx_pass_action{
@@ -135,5 +141,6 @@ API void gfx_draw_lines(int32_t start, int32_t length);
 API gfx_pipeline_handle gfx_pipeline_create(gfx_pipeline_desc const *);
 API void gfx_apply_pipeline(gfx_pipeline_handle pip);
 API void gfx_pipeline_destroy(gfx_pipeline_handle);
+API void gfx_update_uniforms(gfx_pipeline_handle pip, uint32_t start, int32_t length);
 
 #endif //FIXEDPHYSICS_GRAPHICS_H

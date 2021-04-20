@@ -12,14 +12,8 @@ static const char vs_source[] = CONCATENATE(
      layout (location = uv_attr) in vec2 v_uv;
      layout (location = normal_attr) in vec3 v_normal;
 
-     layout(row_major) uniform matrices{
-         mat4 model;
-         mat4 view;
-         mat4 projection;
+     SHADER_MATRICES
 
-         vec3 light_pos;
-         vec3 cam_pos;
-     };
      out vec3 _pos;
      out vec2 _uv;
      out vec3 _normal;
@@ -41,14 +35,7 @@ static const char fs_source[] = CONCATENATE(
 
     uniform sampler2D ourTexture;
 
-    layout(row_major) uniform matrices{
-        mat4 model;
-        mat4 view;
-        mat4 projection;
-
-        vec3 light_pos;
-        vec3 cam_pos;
-    };
+    SHADER_MATRICES
 
     void main()
     {

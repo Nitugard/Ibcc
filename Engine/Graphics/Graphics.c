@@ -25,11 +25,19 @@ typedef struct gfx_buffer{
     uint32_t id;
 } gfx_buffer;
 
+typedef struct gfx_uniform{
+    int32_t id;
+    void(* gfx_uniform_set)(struct gfx_uniform* uniform);
+    void* buffer;
+    uint32_t offset;
+} gfx_uniform;
+
 typedef struct gfx_pipeline{
     gfx_shader_handle shader;
     uint32_t vao_id;
     uint32_t ebo_id;
-
+    gfx_uniform uniforms[MAXIMUM_PIPELINE_UNIFORMS];
+    uint32_t active_uniforms;
 }gfx_pipeline;
 
 typedef struct gfx_texture{
@@ -46,6 +54,23 @@ __stdcall void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum 
             type, severity, message);
 }
 
+/*
+ * Uniform settters.
+ */
+
+void uniform_set_f1(gfx_uniform* data){glUniform1f(data->id, *(float*)data->buffer);}
+void uniform_set_f2(gfx_uniform* data){glUniform2f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1));}
+void uniform_set_f3(gfx_uniform* data){glUniform3f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1), *((float*)data->buffer + 2));}
+void uniform_set_f4(gfx_uniform* data){glUniform4f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1), *((float*)data->buffer + 2), *((float*)data->buffer + 3));}
+void uniform_set_i1(gfx_uniform* data){glUniform1i(data->id, *(int*)data->buffer);}
+void uniform_set_i2(gfx_uniform* data){glUniform2i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1));}
+void uniform_set_i3(gfx_uniform* data){glUniform3i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1), *((int*)data->buffer + 2));}
+void uniform_set_i4(gfx_uniform* data){glUniform4i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1), *((int*)data->buffer + 2), *((int*)data->buffer + 3));}
+void uniform_set_mat2(gfx_uniform* data){glUniformMatrix2fv(data->id, 1, 0, (float*)data->buffer);}
+void uniform_set_mat3(gfx_uniform* data){glUniformMatrix3fv(data->id, 1, 0, (float*)data->buffer);}
+void uniform_set_mat4(gfx_uniform* data){glUniformMatrix4fv(data->id, 1, 0, (float*)(data->buffer));}
+void uniform_set_sampler2(gfx_uniform* data){glActiveTexture(data->id); glBindTexture(data->id, *(int*)data->buffer);}
+void uniform_set_sampler3(gfx_uniform* data){glActiveTexture(data->id); glBindTexture(data->id, *(int*)data->buffer);}
 
 
 bool gfx_init() {
@@ -203,19 +228,7 @@ void gfx_buffer_destroy(gfx_buffer_handle buffer) {
 
 gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
 
-    typedef struct pip_buff{
-        int32_t next_offset;
-        gfx_buffer_handle buffer;
-    } pip_buff;
-
-    bool is_contigous = desc->contiguous_buffer;
-
-    int32_t unique_buffers_count = 0;
-    pip_buff unique_buffers[MAXIMUM_PIPELINE_ATTRIBUTES];
-    int32_t offsets[MAXIMUM_PIPELINE_ATTRIBUTES];
-
-    //todo: assert
-    gfx_pipeline_handle pipeline = OS_MALLOC(sizeof(struct gfx_buffer));
+    gfx_pipeline_handle pipeline = OS_MALLOC(sizeof(struct gfx_pipeline));
     pipeline->shader = desc->shader;
 
     glCreateVertexArrays(1, &(pipeline->vao_id));
@@ -227,38 +240,11 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     }
     else pipeline->ebo_id = GL_INVALID_INDEX;
 
-    if(is_contigous) {
-        memset(unique_buffers, 0, sizeof(unique_buffers));
-
-        for (int i = 0; i < MAXIMUM_PIPELINE_ATTRIBUTES; ++i) {
-            gfx_pipeline_attr p_attr = desc->attrs[i];
-            if (p_attr.enabled) {
-                //todo: check if shader-attr is valid
-                gfx_shader_attr s_attr = desc->shader->attrs[i];
-                int32_t unique_buffer_index = -1;
-                for (int j = 0; j < unique_buffers_count; ++j) {
-                    if (unique_buffers[j].buffer == p_attr.buffer) {
-                        unique_buffer_index = j;
-                    }
-                }
-                if (unique_buffer_index == -1) {
-                    unique_buffer_index = unique_buffers_count;
-                    unique_buffers_count++;
-                }
-
-                pip_buff* p_buff = &unique_buffers[unique_buffer_index];
-                offsets[i] = p_buff->next_offset;
-                p_buff->buffer = p_attr.buffer;
-                p_buff->next_offset += s_attr.num_elements * s_attr.size;
-
-            }
-        }
-    }
-
-    int32_t unique_buffer_index;
     for(int i=0; i < MAXIMUM_PIPELINE_ATTRIBUTES; ++i) {
         gfx_pipeline_attr p_attr = desc->attrs[i];
-        if (p_attr.enabled) {
+        if (p_attr.buffer != 0) {
+            GFX_ASSERT(p_attr.stride != 0);
+            GFX_ASSERT(p_attr.offset < p_attr.stride);
 
             //todo:check if shader attr is valid
             gfx_shader_attr s_attr = desc->shader->attrs[i];
@@ -266,27 +252,48 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
             glBindBuffer(GL_ARRAY_BUFFER, p_attr.buffer->id);
             glEnableVertexAttribArray(i);
 
-            if(is_contigous) {
-                unique_buffer_index = -1;
-                for (int j = 0; j < unique_buffers_count; ++j) {
-                    if (unique_buffers[j].buffer == p_attr.buffer) {
-                        unique_buffer_index = j;
-                    }
-                }
-                GFX_ASSERT(unique_buffer_index != -1);
-                glVertexAttribPointer(i, s_attr.num_elements,
-                                      GL_FLOAT, GL_FALSE, unique_buffers[unique_buffer_index].next_offset,
-                                      (GLvoid*)(offsets[i]));
-            }
-            else {
+            glVertexAttribPointer(i, s_attr.num_elements,
+                                  GL_FLOAT, GL_FALSE, p_attr.stride,
+                                  (GLvoid *) p_attr.offset);
+        }
+    }
+    int32_t uniforms_count;
+    glGetProgramiv(desc->shader->id, GL_ACTIVE_UNIFORMS, &uniforms_count);
+    int32_t size, length;
+    uint32_t type;
+    char name[1024];
+    int32_t active_uniforms = 0;
+    for (int32_t i = 0; i < uniforms_count; i++) {
+        glGetActiveUniform(desc->shader->id, (GLuint) i, sizeof(name) / sizeof(char), &length, &size, &type, name);
+        for (int j = 0; j < MAXIMUM_PIPELINE_UNIFORMS; ++j) {
+            gfx_pipeline_uniform uniform = desc->uniforms[j];
 
-                //todo: type conversion
-                glVertexAttribPointer(i, s_attr.num_elements,
-                                      GL_FLOAT, GL_FALSE, p_attr.stride,
-                                      (GLvoid *) p_attr.offset);
+            if (uniform.buffer != 0 && strcmp(uniform.name, name) == 0) {
+                struct gfx_uniform* uni = pipeline->uniforms + active_uniforms;
+                ++active_uniforms;
+                //todo: check if uniform with same index is already acitve
+                uni->buffer = uniform.buffer;
+                uni->id = glGetUniformLocation(desc->shader->id, name);
+                uni->offset = uniform.offset;
+                switch (type) {
+                    case GL_FLOAT: uni->gfx_uniform_set = uniform_set_f1; break;
+                    case GL_FLOAT_VEC2: uni->gfx_uniform_set = uniform_set_f2; break;
+                    case GL_FLOAT_VEC3: uni->gfx_uniform_set = uniform_set_f3; break;
+                    case GL_FLOAT_VEC4: uni->gfx_uniform_set = uniform_set_f4; break;
+                    case GL_INT: uni->gfx_uniform_set = uniform_set_i1; break;
+                    case GL_INT_VEC2: uni->gfx_uniform_set = uniform_set_i2; break;
+                    case GL_INT_VEC3: uni->gfx_uniform_set = uniform_set_i3; break;
+                    case GL_INT_VEC4: uni->gfx_uniform_set = uniform_set_i4; break;
+                    case GL_FLOAT_MAT2: uni->gfx_uniform_set = uniform_set_mat2; break;
+                    case GL_FLOAT_MAT3: uni->gfx_uniform_set = uniform_set_mat3; break;
+                    case GL_FLOAT_MAT4: uni->gfx_uniform_set = uniform_set_mat4; break;
+                    default: GFX_ASSERT(false && "Not implemented uniform type");
+                }
             }
         }
     }
+
+
     int32_t binding_point = 0;
     for(int32_t i=0; i < MAXIMUM_PIPELINE_UNIFORM_BLOCKS; ++i)
     {
@@ -296,7 +303,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
         }
 
         gfx_pipeline_uniform_block block = desc->uniform_blocks[i];
-        if(block.enabled)
+        if(block.buffer != 0)
         {
             uint32_t block_id = glGetUniformBlockIndex(desc->shader->id, block.name);
             if(GL_INVALID_INDEX == block_id) {
@@ -304,13 +311,13 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
                           desc->shader->id);
                 continue;
             }
-
             glUniformBlockBinding(desc->shader->id, block_id, binding_point);
             glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, block.buffer->id);
             ++binding_point;
         }
     }
 
+    pipeline->active_uniforms = active_uniforms;
     glBindVertexArray(0);
     return pipeline;
 }
@@ -326,6 +333,17 @@ void gfx_apply_pipeline(gfx_pipeline_handle pip) {
     glBindVertexArray(pip->vao_id);
     if(pip->ebo_id != GL_INVALID_INDEX)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pip->ebo_id);
+
+}
+
+void gfx_update_uniforms(gfx_pipeline_handle pip, uint32_t start, int32_t length) {
+    glUseProgram(pip->shader->id);
+    if(length == -1) length = pip->active_uniforms;
+    for (uint32_t i = start; i < length; ++i) {
+        struct gfx_uniform uni = pip->uniforms[i];
+        uni.buffer = (char*)uni.buffer + uni.offset;
+        uni.gfx_uniform_set(&uni);
+    }
 }
 
 void gfx_draw_triangles(int32_t start, int32_t length)

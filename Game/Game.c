@@ -31,10 +31,8 @@ bool game_init()
 
     srand(time(NULL));
 
-    SH_MVP_T mvp = SH_MVP_IDENTITY;
-    mvp.light_pos[0] = 0;
+    SH_MVP_T mvp;
     mvp.light_pos[1] = 1;
-    mvp.light_pos[2] = 0;
 
     device_cursor_state cursorState = {
             .visible = 0,
@@ -84,51 +82,47 @@ bool game_init()
 
     dw_handle draw_handle = dw_new(&draw_desc);
     for(int i=0; i<=10; ++i) {
-            dw_vector_origin(draw_handle,
-                             mm_vec3_new(i-5, 0, 5),
-                             mm_vec3_new(i-5, 0, -5),
-                             mm_vec3_new(0, 0, 0));
         dw_vector_origin(draw_handle,
-                         mm_vec3_new(+5, 0, i-5),
-                         mm_vec3_new(-5, 0, i-5),
-                         mm_vec3_new(0, 0, 0));
-
+                         mm_vec3_new(i - 5, 0, 5),
+                         mm_vec3_new(i - 5, 0, -5),
+                         mm_vec3_new(0.5, 0.5, 0.5));
+        dw_vector_origin(draw_handle,
+                         mm_vec3_new(+5, 0, i - 5),
+                         mm_vec3_new(-5, 0, i - 5),
+                         mm_vec3_new(0.5, 0.5, 0.5));
     }
     dw_vector(draw_handle, mm_vec3_new(0,100,0), mm_vec3_new(1,0,0));
     dw_vector(draw_handle, mm_vec3_new(100,0,0), mm_vec3_new(0,1,0));
     dw_vector(draw_handle, mm_vec3_new(0,0,100), mm_vec3_new(0,0,1));
 
-
+    float identity[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     gfx_pipeline_desc pipeline_desc = {
-            .contiguous_buffer = false,
             .shader = shader,
             .attrs = {
                     [position_attr] = {
-                            .enabled = true,
                             .buffer = buffer_v,
                             .stride = sizeof(vertex_t),
                             .offset = 0,
                     },
                     [normal_attr] = {
-                            .enabled = true,
                             .buffer = buffer_v,
                             .stride = sizeof(vertex_t),
                             .offset = offsetof(vertex_t, color),
                     },
-                    [uv_attr] = {
-                            .enabled = false
-                    }
 
             },
             .uniform_blocks = {
-                    [0] = {.name = "matrices", .enabled = true, .buffer = buffer_u }
+                    [0] = {.name = "matrices", .buffer = buffer_u }
             },
+            .uniforms = {
+                    [0] = {.name = "model", .buffer = identity, .offset = 0}
+            }
     };
 
 
     gfx_pass_action default_pass = {};
     gfx_pipeline_handle pipeline = gfx_pipeline_create(&pipeline_desc);
-    gfx_color color = { 0.2, 0.8, 1, 1};
+    gfx_color color = { 0.2f, 0.8f, 1, 1};
     default_pass.action = GFX_ACTION_CLEAR;
     default_pass.value = color;
     uint32_t dw_pos = dw_get_position(draw_handle);
@@ -146,6 +140,7 @@ bool game_init()
 
         gfx_buffer_update(buffer_u, &buffer_u_desc);
 
+        gfx_update_uniforms(pipeline, 0, -1);
         gfx_begin_default_pass(&default_pass);
         gfx_apply_pipeline(pipeline);
         gfx_draw_triangles(0, obj_handle->vertices);

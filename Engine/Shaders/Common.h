@@ -10,22 +10,23 @@
 
 #define SH_VER #version 330 core\n
 
-//TODO
-#define SH_MVP uniform vec4 ourColor; \
-
-#define SH_MVP_IDENTITY { \
-.model = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, \
-.view = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, \
-.projection = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}, \
-};
+#define SHADER_MATRICES \
+    uniform mat4 model;                    \
+    layout(std140, row_major) uniform matrices{ \
+        mat4 view; \
+        mat4 projection; \
+        vec3 light_pos; \
+        vec3 cam_pos; \
+    };
 
 typedef struct SH_MVP_T{
-    float model[16];
     float view[16];
     float projection[16];
 
     float light_pos[3];
+    float __pad1;
     float cam_pos[3];
+    float __pad2;
 } SH_MVP_T;
 
 #define PP_NARG(...)    PP_NARG_(__VA_ARGS__,PP_RSEQ_N())

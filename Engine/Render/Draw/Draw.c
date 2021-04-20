@@ -42,26 +42,22 @@ dw_handle dw_new(const dw_desc *desc) {
             .shader = sh_handle,
             .index_buffer = 0,
             .uniform_blocks[0] = {
-                    .enabled = true,
                     .name = "matrices",
                     .buffer = desc->cam_buffer
             },
-            .contiguous_buffer = false,
             .attrs = {
                 [position_attr] = {
 
                     .buffer = buff_v,
-                    .enabled = true,
                     .offset = 0,
                     .stride = VERTEX_STRIDE_B
                 },
                 [color_attr] = {
                         .buffer = buff_v,
-                        .enabled = true,
                         .offset = sizeof(float) * 3,
                         .stride = VERTEX_STRIDE_B,
                 }
-            }
+            },
     };
     gfx_pipeline_handle pip = gfx_pipeline_create(&pip_desc);
     handle->vertex_buffer = buff_v;
