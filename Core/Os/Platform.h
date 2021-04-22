@@ -28,7 +28,7 @@
 #endif
 
 #ifndef ASSERT
-#ifdef __MINGW32__
+#ifdef C_GNUC
 #include <assert.h>
 #define ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
 #else

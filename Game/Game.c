@@ -74,7 +74,7 @@ bool game_init()
     dw_handle draw_handle = dw_new(&draw_desc);
     dw_grid(draw_handle, 20);
 
-    xmdl_data_handle model = (xmdl_data_handle) asset_load("./Assets/sponza.xmdl");
+    xmdl_data_handle model = (xmdl_data_handle) asset_load("./Assets/untitled.xmdl");
     scene_handle scene = scene_new(buffer_u, *model);
 
 

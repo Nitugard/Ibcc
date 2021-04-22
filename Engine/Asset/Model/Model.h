@@ -55,14 +55,33 @@ typedef struct xmdl_vertex {
 } xmdl_vertex;
 
 typedef struct xmdl_texture{
+    STRING name;
+
     VECTOR(char) buffer;
     int32_t size;
+
+    int32_t width;
+    int32_t height;
+    int32_t stride;
+
+    bool sRGB;
+
 } xmdl_texture;
 
 typedef struct xmdl_material {
 
-    xmdl_vec4 diffuse_color;
-    xmdl_vec4 specular_color;
+    float diffuse_factor;
+    xmdl_vec3 diffuse_color;
+
+    float specular_factor;
+    xmdl_vec3 specular_color;
+
+    float ambient_factor;
+    xmdl_vec3 ambient_color;
+
+    float opacity;
+    float shininess;
+    float reflection;
 
     int32_t diffuse_tex_id;
     int32_t specular_tex_id;
@@ -78,16 +97,25 @@ typedef struct xmdl_camera{
     float fov;
 } xmdl_camera;
 
+typedef struct xmdl_mesh_draw_call{
+    int32_t material_id;
+    int32_t vertices;
+}xmdl_mesh_draw_call;
+
 typedef struct xmdl_mesh
 {
     VECTOR(xmdl_vertex) vertices;
     int32_t vertices_count;
 
-    int32_t material_id;
+    int32_t draw_call_count;
+    VECTOR(xmdl_mesh_draw_call) draw_calls;
 
 } xmdl_mesh;
 
 typedef struct xmdl_node{
+
+    STRING name;
+
     xmdl_mat tr_world;
     xmdl_mat tr_parent;
 
@@ -145,18 +173,36 @@ void write_binary(std::string path, xmdl_data_handle data) {
     //Writing meshes
     for (auto mesh_i : data->meshes) {
         write_int32(file, mesh_i.vertices.size());
-        write_int32(file, mesh_i.material_id);
+        write_int32(file, mesh_i.draw_calls.size());
+
+        write(file, mesh_i.draw_calls.data(), sizeof(xmdl_mesh_draw_call) * mesh_i.draw_calls.size());
         write(file, mesh_i.vertices.data(), sizeof(xmdl_vertex) * mesh_i.vertices.size());
     }
 
     //Writing nodes
     for (auto node_i : data->nodes) {
+        //todo: write node name
         write(file, &(node_i.tr_world), sizeof(xmdl_mat));
         write(file, &(node_i.tr_parent), sizeof(xmdl_mat));
         write(file, &(node_i.block_type), sizeof(xmdl_type));
         write(file, &(node_i.block_index), sizeof(int32_t));
         write_int32(file, node_i.children_id.size());
         write(file, node_i.children_id.data(), sizeof(int32_t) * node_i.child_count);
+    }
+
+    //Write materials
+    for (auto mat_i : data->materials)
+        write(file, &(mat_i), sizeof(xmdl_material));
+
+    //Write textures
+    for (auto tex_i : data->textures) {
+        write_int32(file, tex_i.height);
+        write_int32(file, tex_i.width);
+        write_int32(file, tex_i.stride);
+        write_int32(file, tex_i.sRGB);
+        write_int32(file, tex_i.size);
+        fprintf(stdout, "Texture written, size: %i, width:%i, height:%i\n", tex_i.size, tex_i.width, tex_i.height);
+        write(file, tex_i.buffer.data(), tex_i.size);
     }
 
     file.close();

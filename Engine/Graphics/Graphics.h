@@ -106,7 +106,7 @@ typedef struct gfx_pipeline_uniform_block{
 
 typedef struct gfx_pipeline_uniform{
     const char* name;
-    void* buffer;
+    //uint32_t size;
     uint32_t offset;
 } gfx_pipeline_uniform;
 
@@ -150,6 +150,6 @@ API void gfx_draw_id(gfx_draw_type type, int32_t length);
 API gfx_pipeline_handle gfx_pipeline_create(gfx_pipeline_desc const *);
 API void gfx_pipeline_apply(gfx_pipeline_handle pip);
 API void gfx_pipeline_destroy(gfx_pipeline_handle);
-API void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, uint32_t start, int32_t length);
+API void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, void* buffer, uint32_t start, int32_t length);
 
 #endif //FIXEDPHYSICS_GRAPHICS_H

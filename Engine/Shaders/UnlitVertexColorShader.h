@@ -2,7 +2,7 @@
 
 #include "Common.h"
 
-static const char vs_source[] = CONCATENATE(
+static const char vs_source[] = STRING(
     SHADER_VERSION
     layout (location = position_attr) in vec4 v_pos;
     layout (location = color_attr) in vec3 v_color;
@@ -16,7 +16,7 @@ static const char vs_source[] = CONCATENATE(
     }
 );
 
-static const char fs_source[] = CONCATENATE(
+static const char fs_source[] = STRING(
     SHADER_VERSION
     out vec4 FragColor;
 

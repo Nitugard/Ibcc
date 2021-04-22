@@ -40,8 +40,9 @@ typedef struct os_chunk{
 } os_chunk;
 
 void *os_allocate_proxy(uint32_t size, char const *file, uint32_t line) {
+    if(size == 0)
+        return 0;
     os_proxy_header* mem = ALLOC(size + sizeof(os_proxy_header));
-    CORE_ASSERT(mem != 0);
     mem->file = file;
     mem->line = line;
     mem->size = size;

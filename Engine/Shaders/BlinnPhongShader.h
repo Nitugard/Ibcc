@@ -2,7 +2,7 @@
 
 #include "Common.h"
 
-static char vs_source[] = CONCATENATE(
+static char vs_source[] = STRING(
      SHADER_VERSION
      layout (location = position_attr) in vec4 v_pos;
      layout (location = uv_attr) in vec2 v_uv;
@@ -14,35 +14,42 @@ static char vs_source[] = CONCATENATE(
      out vec2 _uv;
      out vec3 _normal;
      void main() {
-         gl_Position = projection * view * model * vec4(v_pos.xyz, 1.0);
+         gl_Position = projection * view * vec4(v_pos.xyz, 1.0);
          _uv = v_uv;
          _normal = v_normal;
          _pos = vec3(model * vec4(v_pos.xyz, 1.0));
      }
 );
 
-static char fs_source[] = CONCATENATE(
+static char fs_source[] = STRING(
     SHADER_VERSION
     out vec4 FragColor;
+
+    uniform vec3 diffuse;
+    uniform vec3 ambient;
+    uniform vec3 specular;
 
     in vec3 _pos;
     in vec2 _uv;
     in vec3 _normal;
 
+    uniform sampler2D diffuse_tex;
+
     SHADER_MATRICES
 
     void main()
     {
+        vec3 tex = texture(diffuse_tex, _uv).xyz;
         vec3 norm = normalize(_normal);
-        vec3 light_dir = normalize(light_pos - _pos);
+        vec3 light_dir = normalize(light_pos);
         float diff = max(dot(norm, light_dir), 0.0);
         vec3 view_dir = normalize(cam_pos - _pos);
         vec3 reflect_dir = reflect(-light_dir, norm);
         float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0f);
         vec3 specular = vec3(0.2f * spec);
-        vec3 diffuse = vec3(diff);
+        vec3 diffuse_res = vec3(diff);
         vec3 ambient = vec3(0.5, 0.5, 0.5);
-        FragColor = vec4((specular + diffuse + ambient) * _normal,1);
+        FragColor = vec4((specular + diffuse_res + ambient) * tex  ,1);
     }
 );
 

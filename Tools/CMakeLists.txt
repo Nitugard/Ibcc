@@ -8,6 +8,7 @@ target_include_directories(${FBX_TOOL_NAME} PRIVATE
         $ENV{FBX_SDK_PATH}/include
         ../Engine/Asset/Model/
         ./Thirdparty/Argparse/
+        ./Thirdparty/stb_image/
         )
 target_link_libraries(${FBX_TOOL_NAME} PRIVATE libfbxsdk)
 target_compile_features(${FBX_TOOL_NAME} PRIVATE cxx_std_17)

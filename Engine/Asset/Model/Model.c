@@ -40,6 +40,7 @@ int32_t read_int32(struct r_buf* buf) {
 xmdl_data_handle read(void* buffer, uint32_t size) {
     xmdl_data_handle data = OS_MALLOC(sizeof(struct xmdl_data));
     r_buf rbuf = {.size = size, .pos = 0, .buf = buffer};
+
     data->version = read_int32(&rbuf);
     data->mesh_count = read_int32(&rbuf);
     data->material_count = read_int32(&rbuf);
@@ -51,7 +52,9 @@ xmdl_data_handle read(void* buffer, uint32_t size) {
     for (int32_t i = 0; i < data->mesh_count; ++i) {
         struct xmdl_mesh *mesh = data->meshes + i;
         mesh->vertices_count = read_int32(&rbuf);
-        mesh->material_id = read_int32(&rbuf);
+        mesh->draw_call_count = read_int32(&rbuf);
+
+        read_next((void **) &(mesh->draw_calls), &rbuf, sizeof(struct xmdl_mesh_draw_call) * mesh->draw_call_count);
         read_next((void **) &(mesh->vertices), &rbuf, sizeof(struct xmdl_vertex) * mesh->vertices_count);
     }
 
@@ -66,6 +69,27 @@ xmdl_data_handle read(void* buffer, uint32_t size) {
         node->child_count = read_int32(&rbuf);
         read_next((void **) &(node->children_id), &rbuf, sizeof(int32_t) * node->child_count);
     }
+
+    //reading materials
+    data->materials = OS_MALLOC(sizeof(struct xmdl_material) * data->material_count);
+    for (int32_t i = 0; i < data->material_count; ++i) {
+        read_next_noalloc((void *) (data->materials + i), &rbuf, sizeof(struct xmdl_material));
+    }
+
+    //reading textures
+    data->textures= OS_MALLOC(sizeof(struct xmdl_texture) * data->texture_count);
+    for (int32_t i = 0; i < data->texture_count; ++i) {
+        struct xmdl_texture *tex = data->textures + i;
+
+        tex->height = read_int32(&rbuf);
+        tex->width = read_int32(&rbuf);
+        tex->stride = read_int32(&rbuf);
+        tex->sRGB = read_int32(&rbuf);
+        tex->size = read_int32(&rbuf);
+
+        read_next((void *) &(tex->buffer), &rbuf, tex->size);
+    }
+
 
     return data;
 }

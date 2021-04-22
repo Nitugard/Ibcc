@@ -23,8 +23,7 @@ typedef struct gfx_buffer{
 
 typedef struct gfx_uniform{
     int32_t id;
-    void(* gfx_uniform_set)(struct gfx_uniform* uniform);
-    void* buffer;
+    void(* gfx_uniform_set)(uint32_t id, void* buffer);
     uint32_t offset;
 } gfx_uniform;
 
@@ -54,19 +53,19 @@ void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum severity,G
  * Uniform settters.
  */
 
-void uniform_set_f1(gfx_uniform* data){glUniform1f(data->id, *(float*)data->buffer);}
-void uniform_set_f2(gfx_uniform* data){glUniform2f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1));}
-void uniform_set_f3(gfx_uniform* data){glUniform3f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1), *((float*)data->buffer + 2));}
-void uniform_set_f4(gfx_uniform* data){glUniform4f(data->id, *(float*)data->buffer, *((float*)data->buffer + 1), *((float*)data->buffer + 2), *((float*)data->buffer + 3));}
-void uniform_set_i1(gfx_uniform* data){glUniform1i(data->id, *(int*)data->buffer);}
-void uniform_set_i2(gfx_uniform* data){glUniform2i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1));}
-void uniform_set_i3(gfx_uniform* data){glUniform3i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1), *((int*)data->buffer + 2));}
-void uniform_set_i4(gfx_uniform* data){glUniform4i(data->id, *(int*)data->buffer, *((int*)data->buffer + 1), *((int*)data->buffer + 2), *((int*)data->buffer + 3));}
-void uniform_set_mat2(gfx_uniform* data){glUniformMatrix2fv(data->id, 1, 0, (float*)data->buffer);}
-void uniform_set_mat3(gfx_uniform* data){glUniformMatrix3fv(data->id, 1, 0, (float*)data->buffer);}
-void uniform_set_mat4(gfx_uniform* data){glUniformMatrix4fv(data->id, 1, 0, (float*)(data->buffer));}
-void uniform_set_sampler2(gfx_uniform* data){glActiveTexture(data->id); glBindTexture(data->id, *(int*)data->buffer);}
-void uniform_set_sampler3(gfx_uniform* data){glActiveTexture(data->id); glBindTexture(data->id, *(int*)data->buffer);}
+void uniform_set_f1(uint32_t id, void* buffer){glUniform1f(id, *(float*)buffer);}
+void uniform_set_f2(uint32_t id, void* buffer){glUniform2f(id, *(float*)buffer, *((float*)buffer + 1));}
+void uniform_set_f3(uint32_t id, void* buffer){glUniform3f(id, *(float*)buffer, *((float*)buffer + 1), *((float*)buffer + 2));}
+void uniform_set_f4(uint32_t id, void* buffer){glUniform4f(id, *(float*)buffer, *((float*)buffer + 1), *((float*)buffer + 2), *((float*)buffer + 3));}
+void uniform_set_i1(uint32_t id, void* buffer){glUniform1i(id, *(int*)buffer);}
+void uniform_set_i2(uint32_t id, void* buffer){glUniform2i(id, *(int*)buffer, *((int*)buffer + 1));}
+void uniform_set_i3(uint32_t id, void* buffer){glUniform3i(id, *(int*)buffer, *((int*)buffer + 1), *((int*)buffer + 2));}
+void uniform_set_i4(uint32_t id, void* buffer){glUniform4i(id, *(int*)buffer, *((int*)buffer + 1), *((int*)buffer + 2), *((int*)buffer + 3));}
+void uniform_set_m2(uint32_t id, void* buffer){glUniformMatrix2fv(id, 1, 0, (float*)buffer);}
+void uniform_set_m3(uint32_t id, void* buffer){glUniformMatrix3fv(id, 1, 0, (float*)buffer);}
+void uniform_set_m4(uint32_t id, void* buffer){glUniformMatrix4fv(id, 1, 0, (float*)(buffer));}
+void uniform_set_s2(uint32_t id, void* buffer){glActiveTexture(id); glBindTexture(id, *(int*)buffer);}
+void uniform_set_s3(uint32_t id, void* buffer){glActiveTexture(id); glBindTexture(id, *(int*)buffer);}
 
 
 bool gfx_init() {
@@ -257,7 +256,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
 
             glVertexAttribPointer(i, s_attr.num_elements,
                                   GL_FLOAT, GL_FALSE, p_attr.stride,
-                                  (GLvoid *) p_attr.offset);
+                                  (const void *) p_attr.offset);
         }
     }
     int32_t uniforms_count;
@@ -267,15 +266,15 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     char name[1024];
     int32_t active_uniforms = 0;
     for (int32_t i = 0; i < uniforms_count; i++) {
+        //TODO: SKIP
         glGetActiveUniform(desc->shader->id, (GLuint) i, sizeof(name) / sizeof(char), &length, &size, &type, name);
         for (int j = 0; j < MAXIMUM_PIPELINE_UNIFORMS; ++j) {
             gfx_pipeline_uniform uniform = desc->uniforms[j];
-
-            if (uniform.buffer != 0 && strcmp(uniform.name, name) == 0) {
+            if(uniform.name == 0) continue;
+            if (strcmp(uniform.name, name) == 0) {
                 struct gfx_uniform* uni = pipeline->uniforms + active_uniforms;
                 ++active_uniforms;
                 //todo: check if uniform with same index is already acitve
-                uni->buffer = uniform.buffer;
                 uni->id = glGetUniformLocation(desc->shader->id, name);
                 uni->offset = uniform.offset;
                 switch (type) {
@@ -287,9 +286,9 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
                     case GL_INT_VEC2: uni->gfx_uniform_set = uniform_set_i2; break;
                     case GL_INT_VEC3: uni->gfx_uniform_set = uniform_set_i3; break;
                     case GL_INT_VEC4: uni->gfx_uniform_set = uniform_set_i4; break;
-                    case GL_FLOAT_MAT2: uni->gfx_uniform_set = uniform_set_mat2; break;
-                    case GL_FLOAT_MAT3: uni->gfx_uniform_set = uniform_set_mat3; break;
-                    case GL_FLOAT_MAT4: uni->gfx_uniform_set = uniform_set_mat4; break;
+                    case GL_FLOAT_MAT2: uni->gfx_uniform_set = uniform_set_m2; break;
+                    case GL_FLOAT_MAT3: uni->gfx_uniform_set = uniform_set_m3; break;
+                    case GL_FLOAT_MAT4: uni->gfx_uniform_set = uniform_set_m4; break;
                     default: ASSERT(false && "Not implemented uniform type");
                 }
             }
@@ -336,16 +335,17 @@ void gfx_pipeline_apply(gfx_pipeline_handle pip) {
     glBindVertexArray(pip->vao_id);
     if(pip->ebo_id != GL_INVALID_INDEX)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pip->ebo_id);
-
+    glUniform1i(glGetUniformLocation(pip->shader->id, "diffuse_tex"), 0);
 }
 
-void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, uint32_t start, int32_t length) {
+void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, void* buffer, uint32_t start, int32_t length) {
+
+    //todo: remove ifs and check if uniform is enabled instead
     glUseProgram(pip->shader->id);
     if(length == -1) length = pip->active_uniforms;
-    for (uint32_t i = start; i < length; ++i) {
-        struct gfx_uniform uni = pip->uniforms[i];
-        uni.buffer = (char*)uni.buffer + uni.offset;
-        uni.gfx_uniform_set(&uni);
+    if(start + length > pip->active_uniforms) length = pip->active_uniforms - start;
+    for (uint32_t i = start; i < start + length; ++i) {
+        pip->uniforms[i].gfx_uniform_set((uint32_t)pip->uniforms[i].id, (void*)((char*)buffer + pip->uniforms[i].offset));
     }
 }
 
@@ -390,10 +390,9 @@ gfx_texture_handle gfx_texture_create(const gfx_texture_desc * desc) {
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, desc->width, desc->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, desc->data);
-    glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     gfx_texture_handle hndl = OS_MALLOC(sizeof(gfx_texture));
