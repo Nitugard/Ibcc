@@ -21,18 +21,18 @@ typedef struct r_buf{
 
 
 void read_next_noalloc(void* dest, struct r_buf* buf, int32_t size) {
-    os_memcpy(dest, buf->buf + buf->pos, size);
+    os_memcpy(dest, (char*)buf->buf + buf->pos, size);
     buf->pos += size;
 }
 
 void read_next(void** dest, struct r_buf* buf, int32_t size) {
     *dest = OS_MALLOC(size);
-    os_memcpy(*dest, buf->buf + buf->pos, size);
+    os_memcpy(*dest, (char*)buf->buf + buf->pos, size);
     buf->pos += size;
 }
 
 int32_t read_int32(struct r_buf* buf) {
-    int32_t res = *(int32_t *) (buf->buf + buf->pos);
+    int32_t res = *(int32_t *) ((char*)buf->buf + buf->pos);
     buf->pos += sizeof(int32_t);
     return res;
 }

@@ -9,11 +9,18 @@
 #include "File.h"
 
 #include <stdio.h> //fopen fread fclose
+#ifdef __MINGW32__
 #include <unistd.h> //access
+#endif
 
 #ifndef CORE_ASSERT
+#ifdef __MINGW32__
 #include <assert.h>
 #define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#else
+#include "assert.h"
+#define CORE_ASSERT(e) assert(e)
+#endif
 #endif
 
 
@@ -44,12 +51,20 @@ file_hndl file_open(const char * name, const char* mode) {
 }
 
 bool file_exists(const char * name) {
+
+#if __MINGW32__
     if (access(name, F_OK) == 0) {
         return true;
     }
     else{
         return false;
     }
+#else
+    FILE* file = fopen(name, "r");
+    bool result = file != 0;
+    if(result) fclose(file);
+    return result;
+#endif
 }
 
 int32_t file_size(file_hndl hndl) {

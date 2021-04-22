@@ -21,7 +21,6 @@
 #endif
 
 
-
 #define ALLOC(x) malloc(x)
 #define REALLOC(x, size) realloc(x, size)
 #define FREE(x) free(x)
@@ -159,7 +158,7 @@ os_chunk_handle os_chunk_new(int32_t initial_capacity) {
 
 bool os_chunk_alloc(os_chunk_handle handle, uint32_t size, void **pptr) {
     if (handle->cur_size + size > handle->max_size) return false;
-    *pptr = handle->ptr + handle->cur_size;
+    *pptr = (char*)handle->ptr + handle->cur_size;
     handle->cur_size += size;
     return true;
 }

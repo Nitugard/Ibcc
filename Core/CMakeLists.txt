@@ -10,5 +10,5 @@ set(SRC
         Os/Time.c
         Math/Math.c)
 
-add_library(${PROJECT_NAME} SHARED ${SRC})
+add_library(${PROJECT_NAME} ${SRC})
 

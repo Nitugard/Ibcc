@@ -25,7 +25,7 @@ typedef struct arr_data
 
 } arr_data;
 
-#define PTR(arr, i) ((void*)((arr) + 1) + (arr)->element_size * (i))
+#define PTR(arr, i) ((char*)((arr) + 1) + (arr)->element_size * (i))
 
 void arr_capacity(arr_handle handle, int32_t capacity) {
     if(capacity == handle->max_count)

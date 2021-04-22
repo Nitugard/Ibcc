@@ -114,13 +114,11 @@ double clamp(double x, double min, double max) {
 
 //workaround
 GLFWcursor *glfw_blank_cursor() {
-    int32_t w = 1;
-    int32_t h = 1;;
-    char pixels[w * h * 4];
+    char pixels[4];
     os_memset(pixels, 0, sizeof(pixels));
     GLFWimage image;
-    image.width = w;
-    image.height = h;
+    image.width = 1;
+    image.height = 1;
     image.pixels = pixels;
     return glfwCreateCursor(&image, 0, 0);
 }

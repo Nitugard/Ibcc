@@ -78,7 +78,7 @@ bool game_init()
     scene_handle scene = scene_new(buffer_u, *model);
 
 
-    gfx_pass_action default_pass = {};
+    gfx_pass_action default_pass;
     gfx_color color = { 0.2f, 0.8f, 1, 1};
     default_pass.action = GFX_ACTION_CLEAR;
     default_pass.value = color;

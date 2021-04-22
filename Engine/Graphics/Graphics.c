@@ -10,11 +10,7 @@
 
 #include <Os/Log.h>
 #include <Os/Allocator.h>
-
-#ifndef GFX_ASSERT
-#include <assert.h>
-#define GFX_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
+#include <Os/Platform.h>
 
 typedef struct gfx_shader{
     int32_t id;
@@ -46,7 +42,7 @@ typedef struct gfx_texture{
     int32_t height;
 } gfx_texture;
 
-__stdcall void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum severity,GLsizei length,const GLchar* message,const void* userParam )
+void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum severity,GLsizei length,const GLchar* message,const void* userParam )
 {
 
     LOG_ERROR("GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
@@ -115,7 +111,7 @@ uint32_t gl_get_buffer_update_mode(gfx_buffer_update_mode mode)
         default:
             break;
     }
-    GFX_ASSERT(0==1);
+    ASSERT(0==1);
 }
 
 uint32_t gl_get_buffer_type(gfx_buffer_type type) {
@@ -127,7 +123,7 @@ uint32_t gl_get_buffer_type(gfx_buffer_type type) {
         case UNIFORM:
             return GL_UNIFORM_BUFFER;
         default:
-            GFX_ASSERT(0 && "Invalid buffer type");
+            ASSERT(0 && "Invalid buffer type");
             return 0;
     }
 }
@@ -166,9 +162,13 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
     glShaderSource(vs, 1, &desc->vs.src, 0);
     glCompileShader(vs);
     glGetShaderiv(vs, GL_COMPILE_STATUS, &compiled);
-    if (compiled)
+    if (compiled) {
         glAttachShader(shader->id, vs);
-    else gl_print_shader_err(vs);
+    }
+    else {
+        gl_print_shader_err(vs);
+        LOG_ERROR("Shader %s\n", desc->vs.src);
+    }
     compiled = 0;
     uint32_t fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &desc->fs.src, 0);
@@ -176,7 +176,10 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
     glGetShaderiv(fs, GL_COMPILE_STATUS, &compiled);
     if (compiled)
         glAttachShader(shader->id, fs);
-    else gl_print_shader_err(fs);
+    else {
+        gl_print_shader_err(fs);
+        LOG_ERROR("Shader %s\n", desc->vs.src);
+    }
 
     compiled = 0;
     glLinkProgram(shader->id);
@@ -204,7 +207,7 @@ gfx_buffer_handle gfx_buffer_create(const gfx_buffer_desc * desc) {
         return 0;
     }
 
-    GFX_ASSERT(desc->size != 0);
+    ASSERT(desc->size != 0);
     gfx_buffer_handle buffer = OS_MALLOC(sizeof(struct gfx_buffer));
 
     glGenBuffers(1, &(buffer->id));
@@ -243,8 +246,8 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     for(int i=0; i < MAXIMUM_PIPELINE_ATTRIBUTES; ++i) {
         gfx_pipeline_attr p_attr = desc->attrs[i];
         if (p_attr.buffer != 0) {
-            GFX_ASSERT(p_attr.stride != 0);
-            GFX_ASSERT(p_attr.offset < p_attr.stride);
+            ASSERT(p_attr.stride != 0);
+            ASSERT(p_attr.offset < p_attr.stride);
 
             //todo:check if shader attr is valid
             gfx_shader_attr s_attr = desc->shader->attrs[i];
@@ -287,7 +290,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
                     case GL_FLOAT_MAT2: uni->gfx_uniform_set = uniform_set_mat2; break;
                     case GL_FLOAT_MAT3: uni->gfx_uniform_set = uniform_set_mat3; break;
                     case GL_FLOAT_MAT4: uni->gfx_uniform_set = uniform_set_mat4; break;
-                    default: GFX_ASSERT(false && "Not implemented uniform type");
+                    default: ASSERT(false && "Not implemented uniform type");
                 }
             }
         }

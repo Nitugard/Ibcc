@@ -27,4 +27,15 @@
 #define C_GNUC
 #endif
 
+#ifndef ASSERT
+#ifdef __MINGW32__
+#include <assert.h>
+#define ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#else
+#include "assert.h"
+#define ASSERT(e) assert(e)
+#endif
+#endif
+
+
 #endif //PLATFORM_H

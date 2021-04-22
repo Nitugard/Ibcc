@@ -75,7 +75,7 @@ typedef struct xmdl_light{
 } xmdl_light;
 
 typedef struct xmdl_camera{
-
+    float fov;
 } xmdl_camera;
 
 typedef struct xmdl_mesh
