@@ -5,8 +5,7 @@
  */
 
 
-#ifndef IBC_LIGHTS_H
-#define IBC_LIGHTS_H
+#ifndef IBC_CAMERA_H
+#define IBC_CAMERA_H
 
-
-#endif //IBC_LIGHTS_H
+#endif //IBC_CAMERA_H

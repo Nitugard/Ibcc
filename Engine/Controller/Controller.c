@@ -73,11 +73,14 @@ void controller_camera_fp_update(controller_camera_handle handle, float dt) {
 }
 
 controller_camera_handle controller_camera_new(const controller_camera_init_desc *desc) {
+    mm_mat4 orto = mm_mat_ortographic(-800/600.0f, 800/600.0f, -1, 1, 0.1, 100);
+    mm_mat4 persp = mm_mat_perspective(mm_new(80), mm_new_fraction(1600, 900), mm_new_fraction(1, 100), mm_new(1000));
+
     controller_camera_handle handle = OS_MALLOC(sizeof(struct controller_camera_data));
     handle->init_desc = *desc;
     handle->pos = desc->pos;
     handle->rot_euler = desc->rot_euler;
-    handle->projection = mm_mat_perspective(mm_new(60), mm_new_fraction(800, 600), mm_new_fraction(1, 10), mm_new(100));
+    handle->projection = persp;
     return handle;
 }
 

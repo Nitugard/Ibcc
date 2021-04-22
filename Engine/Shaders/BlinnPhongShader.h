@@ -2,12 +2,8 @@
 
 #include "Common.h"
 
-#define position_attr 0
-#define uv_attr 1
-#define normal_attr 2
-
 static const char vs_source[] = CONCATENATE(
-        SH_VER,
+     SHADER_VERSION,
      layout (location = position_attr) in vec4 v_pos;
      layout (location = uv_attr) in vec2 v_uv;
      layout (location = normal_attr) in vec3 v_normal;
@@ -26,14 +22,12 @@ static const char vs_source[] = CONCATENATE(
 );
 
 static const char fs_source[] = CONCATENATE(
-        SH_VER,
+    SHADER_VERSION,
     out vec4 FragColor;
 
     in vec3 _pos;
     in vec2 _uv;
     in vec3 _normal;
-
-    uniform sampler2D ourTexture;
 
     SHADER_MATRICES
 
@@ -44,22 +38,21 @@ static const char fs_source[] = CONCATENATE(
         float diff = max(dot(norm, light_dir), 0.0);
         vec3 view_dir = normalize(cam_pos - _pos);
         vec3 reflect_dir = reflect(-light_dir, norm);
-        float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 64);
-        vec3 specular = vec3(0.8f * spec);
+        float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0f);
+        vec3 specular = vec3(0.2f * spec);
         vec3 diffuse = vec3(diff);
-        vec3 ambient = vec3(0.8, 0.5, 0.5);
-        FragColor = vec4((specular + diffuse + ambient) * _normal ,1);
+        vec3 ambient = vec3(0.5, 0.5, 0.5);
+        FragColor = vec4((specular + diffuse + ambient) * _normal,1);
     }
 );
 
 static gfx_shader_desc unlit_shader_desc = {
         .vs = {.src = vs_source},
         .fs = {.src = fs_source},
-        .name = "unlit_shader",
+        .name = "blinn_phong_shader",
         .attrs = {
                 [position_attr] = {.size = 4, .num_elements = 3},
                 [uv_attr] = {.size = 4, .num_elements = 2},
                 [normal_attr] = {.size = 4, .num_elements = 3},
-
         }
 };

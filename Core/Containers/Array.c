@@ -8,8 +8,13 @@
 #include <string.h>
 
 #ifndef CORE_ASSERT
+#ifdef __MINGW32__
 #include <assert.h>
 #define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#else
+#include "assert.h"
+#define CORE_ASSERT(e) assert(e)
+#endif
 #endif
 
 typedef struct arr_data

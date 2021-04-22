@@ -21,7 +21,6 @@ arr_handle loaded_assets; //asset_data[]
 
 extern void init_json_asset();
 extern void init_model_asset();
-extern void init_texture_asset();
 
 API bool asset_init(){
     registered_types = arr_new(sizeof(asset_register_desc), 32);
@@ -29,7 +28,6 @@ API bool asset_init(){
 
     init_json_asset();
     init_model_asset();
-    init_texture_asset();
     return true;
 }
 

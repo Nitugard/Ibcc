@@ -54,6 +54,9 @@ bool device_init() {
         return false;
     }
 
+    int32_t width = 1600;
+    int32_t height = 900;
+
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -63,7 +66,7 @@ bool device_init() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Device | Dragutin Sredojevic | 2021", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(width, height, "Device | Dragutin Sredojevic | 2021", NULL, NULL);
     glfwMakeContextCurrent(window);
     DEVICE_ASSERT(window != NULL);
 
@@ -84,8 +87,8 @@ bool device_init() {
     wnd.handle = window;
     wnd.device_events_input_callback = NULL;
     wnd.device_events_keyboard_callback = NULL;
-    wnd.width = 800;
-    wnd.height = 600;
+    wnd.width = width;
+    wnd.height = height;
     return true;
 }
 

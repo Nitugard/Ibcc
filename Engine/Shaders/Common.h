@@ -8,7 +8,14 @@
 #ifndef IBC_COMMON_H
 #define IBC_COMMON_H
 
-#define SH_VER #version 330 core\n
+
+
+#define position_attr 0
+#define color_attr 1
+#define uv_attr 2
+#define normal_attr 3
+
+#define SHADER_VERSION #version 300 es\n precision mediump float;\n
 
 #define SHADER_MATRICES \
     uniform mat4 model;                    \

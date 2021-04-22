@@ -322,7 +322,7 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     return pipeline;
 }
 
-void gfx_apply_pipeline(gfx_pipeline_handle pip) {
+void gfx_pipeline_apply(gfx_pipeline_handle pip) {
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -336,7 +336,7 @@ void gfx_apply_pipeline(gfx_pipeline_handle pip) {
 
 }
 
-void gfx_update_uniforms(gfx_pipeline_handle pip, uint32_t start, int32_t length) {
+void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, uint32_t start, int32_t length) {
     glUseProgram(pip->shader->id);
     if(length == -1) length = pip->active_uniforms;
     for (uint32_t i = start; i < length; ++i) {
@@ -346,18 +346,14 @@ void gfx_update_uniforms(gfx_pipeline_handle pip, uint32_t start, int32_t length
     }
 }
 
-void gfx_draw_triangles(int32_t start, int32_t length)
+void gfx_draw(gfx_draw_type type, int32_t start, int32_t length)
 {
-    glDrawArrays(GL_TRIANGLES, 0, length);
+    glDrawArrays(type, start, length);
 }
 
-void gfx_draw_lines(int32_t start, int32_t length) {
-    glDrawArrays(GL_LINES, 0, length);
-}
-
-void gfx_draw_triangles_indexed(int32_t length)
+void gfx_draw_id(gfx_draw_type type, int32_t length)
 {
-    glDrawElements(GL_TRIANGLES, length, GL_UNSIGNED_INT, 0);
+    glDrawElements(type, length, GL_UNSIGNED_INT, 0);
 }
 
 void gfx_buffer_update(gfx_buffer_handle buffer, const gfx_buffer_desc * desc) {

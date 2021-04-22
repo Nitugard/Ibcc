@@ -44,6 +44,16 @@ typedef enum gfx_pass_action_type
     GFX_ACTION_CLEAR,
 } gfx_pass_action_type;
 
+typedef enum gfx_draw_type {
+    GFX_POINTS = 0x0000,
+    GFX_LINES = 0x0001,
+    GFX_LINE_LOOP = 0x0002,
+    GFX_LINE_STRIP = 0x0003,
+    GFX_TRIANGLES = 0x0004,
+    GFX_TRIANGLE_STRIP = 0x0005,
+    GFX_TRIANGLE_FAN = 0x0006
+} gfx_draw_type;
+
 typedef struct gfx_shader *gfx_shader_handle;
 typedef struct gfx_pipeline *gfx_pipeline_handle;
 typedef struct gfx_buffer *gfx_buffer_handle;
@@ -133,14 +143,13 @@ API void gfx_texture_destroy(gfx_texture_handle);
 API void gfx_begin_default_pass(gfx_pass_action const*);
 API void gfx_end_pass();
 
-API void gfx_draw_triangles(int32_t start, int32_t length);
-API void gfx_draw_triangles_indexed(int32_t length);
-API void gfx_draw_lines(int32_t start, int32_t length);
+API void gfx_draw(gfx_draw_type type, int32_t start, int32_t length);
+API void gfx_draw_id(gfx_draw_type type, int32_t length);
 
 
 API gfx_pipeline_handle gfx_pipeline_create(gfx_pipeline_desc const *);
-API void gfx_apply_pipeline(gfx_pipeline_handle pip);
+API void gfx_pipeline_apply(gfx_pipeline_handle pip);
 API void gfx_pipeline_destroy(gfx_pipeline_handle);
-API void gfx_update_uniforms(gfx_pipeline_handle pip, uint32_t start, int32_t length);
+API void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, uint32_t start, int32_t length);
 
 #endif //FIXEDPHYSICS_GRAPHICS_H

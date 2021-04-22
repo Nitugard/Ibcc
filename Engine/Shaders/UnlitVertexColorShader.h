@@ -2,11 +2,8 @@
 
 #include "Common.h"
 
-#define position_attr 0
-#define color_attr 1
-
 static const char vs_source[] = CONCATENATE(
-    SH_VER,
+    SHADER_VERSION,
     layout (location = position_attr) in vec4 v_pos;
     layout (location = color_attr) in vec3 v_color;
 
@@ -20,7 +17,7 @@ static const char vs_source[] = CONCATENATE(
 );
 
 static const char fs_source[] = CONCATENATE(
-    SH_VER,
+    SHADER_VERSION,
     out vec4 FragColor;
 
     in vec3 _color;
@@ -34,7 +31,7 @@ static const char fs_source[] = CONCATENATE(
 static gfx_shader_desc unlit_shader_desc = {
         .vs = {.src = vs_source},
         .fs = {.src = fs_source},
-        .name = "unlit_color_shader",
+        .name = "unlit_vertex_color_shader",
         .attrs = {
                 [position_attr] = {.size = 4, .num_elements = 3},
                 [color_attr] = {.size = 4, .num_elements = 3},

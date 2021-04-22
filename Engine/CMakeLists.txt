@@ -12,6 +12,7 @@ add_subdirectory(ThirdParty/glfw/)
 add_subdirectory(Graphics)
 add_subdirectory(Device)
 add_subdirectory(Asset)
+add_subdirectory(Scene)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC Core glfw)
 

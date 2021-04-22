@@ -15,7 +15,6 @@
 #define API
 #endif
 
-#define MAXIMUM_VERTICES 1024
 
 typedef struct dw_desc{
     gfx_buffer_handle cam_buffer;
@@ -24,13 +23,18 @@ typedef struct dw_desc{
 typedef struct dw_data* dw_handle;
 
 API dw_handle dw_new(dw_desc const* desc);
-API void dw_begin(dw_handle handle);//todo: in case of static drawing
-API void dw_clear(dw_handle handle, uint32_t position);
-API void dw_vector(dw_handle handle, mm_vec3 vec, mm_vec3 color);
-API uint32_t dw_get_position(dw_handle handle);
-API void dw_vector_origin(dw_handle handle, mm_vec3 vec, mm_vec3 origin, mm_vec3 color);
-API void dw_end(dw_handle handle);
+API void dw_segment_origin(dw_handle handle, mm_vec3 vec, mm_vec3 color);
+API void dw_segment(dw_handle handle, mm_vec3 vec, mm_vec3 origin, mm_vec3 color);
+API void dw_grid(dw_handle handle, uint32_t segments);
+API void dw_cube(dw_handle handle, mm_vec3 pos, mm_vec3 color, float size);
+
+API void dw_clear(dw_handle handle, uint64_t position);
+API void dw_clear_all(dw_handle handle);
+
+API uint64_t dw_get_position(dw_handle handle);
+API void dw_apply(dw_handle handle);
 
 API void dw_bind(dw_handle handle);
+API void dw_delete(dw_handle handle);
 
 #endif //IBC_DRAW_H

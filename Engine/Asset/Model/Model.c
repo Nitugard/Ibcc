@@ -1,67 +1,103 @@
+/*
+ *  Copyright (C) 2021 by Dragutin Sredojevic
+ *  https://www.nitugard.com
+ *  All Rights Reserved.
+ */
 
+
+#define XMDL_IMPLEMENTATION
 #include "Model.h"
 
 #include <Os/Allocator.h>
 #include <Asset/Asset.h>
 #include <Os/File.h>
-#include "ObjParser.h"
 
+typedef struct r_buf{
+    void* buf;
+    int32_t pos;
+    int32_t size;
+} r_buf;
+
+
+
+void read_next_noalloc(void* dest, struct r_buf* buf, int32_t size) {
+    os_memcpy(dest, buf->buf + buf->pos, size);
+    buf->pos += size;
+}
+
+void read_next(void** dest, struct r_buf* buf, int32_t size) {
+    *dest = OS_MALLOC(size);
+    os_memcpy(*dest, buf->buf + buf->pos, size);
+    buf->pos += size;
+}
+
+int32_t read_int32(struct r_buf* buf) {
+    int32_t res = *(int32_t *) (buf->buf + buf->pos);
+    buf->pos += sizeof(int32_t);
+    return res;
+}
+
+xmdl_data_handle read(void* buffer, uint32_t size) {
+    xmdl_data_handle data = OS_MALLOC(sizeof(struct xmdl_data));
+    r_buf rbuf = {.size = size, .pos = 0, .buf = buffer};
+    data->version = read_int32(&rbuf);
+    data->mesh_count = read_int32(&rbuf);
+    data->material_count = read_int32(&rbuf);
+    data->texture_count = read_int32(&rbuf);
+    data->node_count = read_int32(&rbuf);
+
+    //reading meshes
+    data->meshes = OS_MALLOC(sizeof(struct xmdl_mesh) * data->mesh_count);
+    for (int32_t i = 0; i < data->mesh_count; ++i) {
+        struct xmdl_mesh *mesh = data->meshes + i;
+        mesh->vertices_count = read_int32(&rbuf);
+        mesh->material_id = read_int32(&rbuf);
+        read_next((void **) &(mesh->vertices), &rbuf, sizeof(struct xmdl_vertex) * mesh->vertices_count);
+    }
+
+    //reading nodes
+    data->nodes = OS_MALLOC(sizeof(struct xmdl_node) * data->node_count);
+    for (int32_t i = 0; i < data->node_count; ++i) {
+        struct xmdl_node *node = data->nodes + i;
+        read_next_noalloc((void *) (node->tr_world.data), &rbuf, sizeof(struct xmdl_mat));
+        read_next_noalloc((void *) (node->tr_parent.data), &rbuf, sizeof(struct xmdl_mat));
+        node->block_type = read_int32(&rbuf);
+        node->block_index = read_int32(&rbuf);
+        node->child_count = read_int32(&rbuf);
+        read_next((void **) &(node->children_id), &rbuf, sizeof(int32_t) * node->child_count);
+    }
+
+    return data;
+}
 
 asset_hndl asset_on_load_model(char* filename) {
 
-    uint32_t length;
-    char *data = file_mmap(filename, &length);
-    if (data == 0) return 0;
+    xmdl_data_handle data;
+    uint32_t len;
+    char *buffer = file_mmap(filename, &len);
+    data = read(buffer, len);
 
-    mesh_t* meshes;
-    uint32_t meshes_count;
-    parse_obj(data, 0, &meshes, &meshes_count);
-    mdl_data_handle handle = OS_MALLOC(sizeof (struct mdl_data));
-
-    uint32_t total_vertices = 0;
-    for(uint32_t i=0; i<meshes_count; ++i) {
-        total_vertices += meshes[i].faces_length * 3;
-    }
-
-    handle->vertices = total_vertices;
-    handle->buffer_size = sizeof(struct vertex_t) * total_vertices;
-    handle->buffer = OS_MALLOC(handle->buffer_size);
-    vertex_t *vbuf = (vertex_t *) handle->buffer;
-    os_memset(vbuf, 0, handle->buffer_size);
-    mesh_t mesh;
-    face_t face;
-    for(uint32_t j=0; j<meshes_count; ++j) {
-        mesh = meshes[j];
-        for (uint32_t i = 0; i < mesh.faces_length; ++i) {
-            face = mesh.faces[i];
-            for(uint32_t k=0; k<3; ++k) {
-                if (mesh.uvs_length != 0) os_memcpy(vbuf->uv, (&mesh.uvs[face.uv_id[k]]), sizeof(struct vec2_t));
-                if (mesh.normals_length != 0) os_memcpy(vbuf->normal, (&mesh.normals[face.norm_id[k]]), sizeof(struct vec3_t));
-                if (mesh.normals_length != 0) os_memcpy(vbuf->color, (&mesh.normals[face.norm_id[k]]), sizeof(struct vec3_t));
-                if (mesh.vertices_length != 0) os_memcpy(vbuf->pos, (&mesh.vertices[face.vert_id[k]]), sizeof(struct vec3_t));
-
-                vbuf++;
-            }
-        }
-    }
-
-    free_obj(meshes, meshes_count);
-    return (asset_hndl) handle;
+    return (asset_hndl) data;
 }
 
 void asset_on_unload_model(asset_hndl hndl)
 {
-    mdl_data_handle mdl = (mdl_data_handle) hndl;
-    OS_FREE(mdl->buffer);
-    OS_FREE(mdl);
+    //TODO: DELETE
 }
 
 void init_model_asset() {
     asset_register_desc jpg_desc = {
-            .extension = "obj",
+            .extension = "xmdl",
             .asset_on_load = asset_on_load_model,
             .asset_on_unload = asset_on_unload_model
     };
     asset_register(&jpg_desc);
 }
 
+xmdl_mat xmdl_mat_identity() {
+    xmdl_mat result = {.data={1, 0, 0, 0,
+                              0, 1, 0, 0,
+                              0, 0, 1, 0,
+                              0, 0, 0, 1}};
+    return result;
+}

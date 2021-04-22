@@ -35,6 +35,17 @@ typedef struct hash_data{
 } hash_data;
 
 
+#ifndef CORE_ASSERT
+#ifdef __MINGW32__
+#include <assert.h>
+#define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
+#else
+#include "assert.h"
+#define CORE_ASSERT(e) assert(e)
+#endif
+#endif
+
+
 float get_load_factor(hash_handle handle) {
     if (arr_max_size(handle->buckets) < MINIMUM_HASH_SIZE)
         return 1;
