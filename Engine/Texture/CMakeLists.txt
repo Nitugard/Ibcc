@@ -1,3 +1,3 @@
 target_sources(${PROJECT_NAME} PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/Asset.c
+        ${CMAKE_CURRENT_LIST_DIR}/Texture.c
         )

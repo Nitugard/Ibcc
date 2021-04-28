@@ -4,3 +4,6 @@
 /Bin/*
 /Libs/*
 cmake-build-release/
+/cmake-build-minsizerel/
+/cmake-build-relwithdebinfo/
+/Build/

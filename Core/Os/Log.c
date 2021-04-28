@@ -25,7 +25,7 @@
 #define YELLOW 6
 #define WHITE 7
 int32_t colors[] = {COLOR(WHITE, BLACK),
-                    COLOR(YELLOW, BLACK),
+                    COLOR(LBLUE, BLACK),
                     COLOR(GREEN, BLACK),
                     COLOR(PURPLE, BLACK),
                     COLOR(RED, BLACK),
@@ -36,8 +36,7 @@ static void print(struct _iobuf* io, const char* data, const char* file, int32_t
     char buf[16];
     time_t time_now = time(NULL);
     buf[strftime(buf, sizeof(buf), "%H:%M:%S", localtime(&time_now))] = '\0';
-    fprintf(io, "%s %-5s %s:%d: ", buf, log_level_to_string(level), file, line);
-    fprintf(io, "\n%s", data);
+    fprintf(io, "%s %-5s %s:%d: %s", buf, log_level_to_string(level), file, line, data);
     fflush(io);
 }
 

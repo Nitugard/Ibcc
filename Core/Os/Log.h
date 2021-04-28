@@ -13,6 +13,7 @@
  * Todo: more streams
  */
 #define DEFAULT_IO
+//#define LOG_VERBOSE
 
 #include <stdbool.h>
 #include <stdint.h>

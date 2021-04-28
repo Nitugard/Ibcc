@@ -16,29 +16,23 @@ typedef struct asset_data{
     string_handle path;
 } asset_data;
 
-arr_handle registered_types; //asset_register_desc[]
-arr_handle loaded_assets; //asset_data[]
-
-extern void init_json_asset();
-extern void init_model_asset();
+arr_handle registered_types;
+arr_handle loaded_assets;
 
 API bool asset_init(){
     registered_types = arr_new(sizeof(asset_register_desc), 32);
     loaded_assets = arr_new(sizeof(struct asset_data), 32);
-
-    init_json_asset();
-    init_model_asset();
     return true;
 }
 
 API void asset_terminate(){
     while(arr_size(loaded_assets) > 0) {
+        LOG_WARN("Unloading asset %s\n", str_internal(((struct asset_data *) arr_get(loaded_assets, 0))->path));
         asset_unload(((struct asset_data *) arr_get(loaded_assets, 0))->hndl);
     }
     arr_delete(registered_types);
     arr_delete(loaded_assets);
 }
-
 
 int32_t find_registered_type_description(char const* fext)
 {
@@ -97,7 +91,7 @@ bool asset_load_execute(const char* path, void* data) {
     }
 
     *((asset_hndl *) data) = ((struct asset_register_desc const *) arr_get(registered_types, i))->asset_on_load(path);
-    return true;
+    return (*(asset_hndl *) data) != 0;
 }
 
 asset_hndl asset_load(const char *name) {

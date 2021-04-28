@@ -21,27 +21,34 @@ typedef struct gfx_buffer{
     uint32_t id;
 } gfx_buffer;
 
-typedef struct gfx_uniform{
-    int32_t id;
-    void(* gfx_uniform_set)(uint32_t id, void* buffer);
-    uint32_t offset;
-} gfx_uniform;
-
 typedef struct gfx_pipeline{
     gfx_shader_handle shader;
     uint32_t vao_id;
     uint32_t ebo_id;
-    gfx_uniform uniforms[MAXIMUM_PIPELINE_UNIFORMS];
-    uint32_t active_uniforms;
 }gfx_pipeline;
 
 typedef struct gfx_texture{
     uint32_t id;
     int32_t width;
     int32_t height;
+    gfx_texture_filter_mode filter;
+    gfx_texture_wrap_mode wrap;
+    gfx_texture_type type;
+    bool mipmaps;
 } gfx_texture;
 
-void opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum severity,GLsizei length,const GLchar* message,const void* userParam )
+typedef struct gfx_framebuffer{
+    uint32_t id;
+} gfx_framebuffer;
+
+uint32_t draw_calls_count_current_pass;
+uint32_t draw_calls_count_previous_pass;
+
+void
+#ifdef __MINGW32__
+__attribute__((stdcall))
+#endif
+opengl_msg_callback( GLenum source,GLenum type, GLuint id,GLenum severity,GLsizei length,const GLchar* message,const void* userParam )
 {
 
     LOG_ERROR("GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
@@ -61,11 +68,9 @@ void uniform_set_i1(uint32_t id, void* buffer){glUniform1i(id, *(int*)buffer);}
 void uniform_set_i2(uint32_t id, void* buffer){glUniform2i(id, *(int*)buffer, *((int*)buffer + 1));}
 void uniform_set_i3(uint32_t id, void* buffer){glUniform3i(id, *(int*)buffer, *((int*)buffer + 1), *((int*)buffer + 2));}
 void uniform_set_i4(uint32_t id, void* buffer){glUniform4i(id, *(int*)buffer, *((int*)buffer + 1), *((int*)buffer + 2), *((int*)buffer + 3));}
-void uniform_set_m2(uint32_t id, void* buffer){glUniformMatrix2fv(id, 1, 0, (float*)buffer);}
-void uniform_set_m3(uint32_t id, void* buffer){glUniformMatrix3fv(id, 1, 0, (float*)buffer);}
-void uniform_set_m4(uint32_t id, void* buffer){glUniformMatrix4fv(id, 1, 0, (float*)(buffer));}
-void uniform_set_s2(uint32_t id, void* buffer){glActiveTexture(id); glBindTexture(id, *(int*)buffer);}
-void uniform_set_s3(uint32_t id, void* buffer){glActiveTexture(id); glBindTexture(id, *(int*)buffer);}
+void uniform_set_m2(uint32_t id, void* buffer){glUniformMatrix2fv(id, 1, 1, (float*)buffer);}
+void uniform_set_m3(uint32_t id, void* buffer){glUniformMatrix3fv(id, 1, 1, (float*)buffer);}
+void uniform_set_m4(uint32_t id, void* buffer){glUniformMatrix4fv(id, 1, 1, (float*)(buffer));}
 
 
 bool gfx_init() {
@@ -74,12 +79,15 @@ bool gfx_init() {
         return false;
     }
     glEnable(GL_TEXTURE_2D);
+    glEnable(GL_MULTISAMPLE);
     glEnable(GL_DEBUG_OUTPUT);
-    glDebugMessageCallback(opengl_msg_callback, 0);
+    glFrontFace(GL_CCW);
+    glDebugMessageCallback((GLDEBUGPROC) opengl_msg_callback, 0);
 
+    LOG_INFO("Graphics initialized\n");
+    LOG_INFO("%s %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
     return true;
 }
-
 
 void gfx_terminate(){
 
@@ -89,23 +97,23 @@ void gfx_terminate(){
 uint32_t gl_get_buffer_update_mode(gfx_buffer_update_mode mode)
 {
     switch (mode) {
-        case STATIC_DRAW:
+        case GFX_BUFFER_UPDATE_STATIC_DRAW:
             return GL_STATIC_DRAW;
-        case STATIC_READ:
+        case GFX_BUFFER_UPDATE_STATIC_READ:
             return GL_STATIC_READ;
-        case STATIC_COPY:
+        case GFX_BUFFER_UPDATE_STATIC_COPY:
             return GL_STATIC_COPY;
-        case DYNAMIC_DRAW:
+        case GFX_BUFFER_UPDATE_DYNAMIC_DRAW:
             return GL_DYNAMIC_DRAW;
-        case DYNAMIC_READ:
+        case GFX_BUFFER_UPDATE_DYNAMIC_READ:
             return GL_DYNAMIC_READ;
-        case DYNAMIC_COPY:
+        case GFX_BUFFER_UPDATE_DYNAMIC_COPY:
             return GL_DYNAMIC_COPY;
-        case STREAM_DRAW:
+        case GFX_BUFFER_UPDATE_STREAM_DRAW:
             return GL_STREAM_DRAW;
-        case STREAM_READ:
+        case GFX_BUFFER_UPDATE_STREAM_READ:
             return GL_STREAM_READ;
-        case STREAM_COPY:
+        case GFX_BUFFER_UPDATE_STREAM_COPY:
             return GL_STREAM_COPY;
         default:
             break;
@@ -115,11 +123,11 @@ uint32_t gl_get_buffer_update_mode(gfx_buffer_update_mode mode)
 
 uint32_t gl_get_buffer_type(gfx_buffer_type type) {
     switch (type) {
-        case VERTEX:
+        case GFX_BUFFER_VERTEX:
             return GL_ARRAY_BUFFER;
-        case INDEX:
+        case GFX_BUFFER_INDEX:
             return GL_ELEMENT_ARRAY_BUFFER;
-        case UNIFORM:
+        case GFX_BUFFER_UNIFORM:
             return GL_UNIFORM_BUFFER;
         default:
             ASSERT(0 && "Invalid buffer type");
@@ -149,12 +157,14 @@ void gl_print_program_err(int32_t shader)
     OS_FREE(buffer);
 }
 
+
+
 gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
 
     gfx_shader_handle shader = OS_MALLOC(sizeof(gfx_shader));
 
     shader->id = glCreateProgram();
-    memcpy(shader->attrs, desc->attrs, MAXIMUM_PIPELINE_ATTRIBUTES);
+    memcpy(shader->attrs, desc->attrs, sizeof(struct gfx_shader_attr) * MAXIMUM_PIPELINE_ATTRIBUTES);
 
     int32_t compiled = 0;
     uint32_t vs = glCreateShader(GL_VERTEX_SHADER);
@@ -199,9 +209,11 @@ void gfx_shader_destroy(gfx_shader_handle shader) {
     OS_FREE(shader);
 }
 
+
+
 gfx_buffer_handle gfx_buffer_create(const gfx_buffer_desc * desc) {
 
-    if(desc->type == UNIFORM && desc->size >= GL_MAX_UNIFORM_BLOCK_SIZE) {
+    if(desc->type == GFX_BUFFER_UNIFORM && desc->size >= GL_MAX_UNIFORM_BLOCK_SIZE) {
         LOG_ERROR("Failed to create shader. Uniform block size reached its limit!");
         return 0;
     }
@@ -223,7 +235,24 @@ gfx_buffer_handle gfx_buffer_create(const gfx_buffer_desc * desc) {
 void gfx_buffer_destroy(gfx_buffer_handle buffer) {
     glDeleteBuffers(1, &(buffer->id));
     OS_FREE(buffer);
+}
 
+void gfx_buffer_update(gfx_buffer_handle buffer, const gfx_buffer_desc * desc) {
+    glBindBuffer(gl_get_buffer_type(desc->type), buffer->id);
+    glBufferSubData(gl_get_buffer_type(desc->type), 0, desc->size, desc->data);
+}
+
+
+void gfx_draw(gfx_draw_type type, int32_t start, int32_t length)
+{
+    glDrawArrays(type, start, length);
+    draw_calls_count_current_pass++;
+}
+
+void gfx_draw_id(gfx_draw_type type, int32_t length)
+{
+    glDrawElements(type, length, GL_UNSIGNED_INT, 0);
+    draw_calls_count_current_pass++;
 }
 
 
@@ -232,7 +261,6 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
 
     gfx_pipeline_handle pipeline = OS_MALLOC(sizeof(struct gfx_pipeline));
     pipeline->shader = desc->shader;
-
     glCreateVertexArrays(1, &(pipeline->vao_id));
     glBindVertexArray(pipeline->vao_id);
 
@@ -240,143 +268,93 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, desc->index_buffer->id);
         pipeline->ebo_id = desc->index_buffer->id;
     }
-    else pipeline->ebo_id = GL_INVALID_INDEX;
+    else {pipeline->ebo_id = GL_INVALID_INDEX;}
 
     for(int i=0; i < MAXIMUM_PIPELINE_ATTRIBUTES; ++i) {
         gfx_pipeline_attr p_attr = desc->attrs[i];
-        if (p_attr.buffer != 0) {
+        if (p_attr.enabled) {
+            ASSERT(p_attr.buffer != 0);
             ASSERT(p_attr.stride != 0);
             ASSERT(p_attr.offset < p_attr.stride);
 
-            //todo:check if shader attr is valid
             gfx_shader_attr s_attr = desc->shader->attrs[i];
 
             glBindBuffer(GL_ARRAY_BUFFER, p_attr.buffer->id);
             glEnableVertexAttribArray(i);
 
-            glVertexAttribPointer(i, s_attr.num_elements,
-                                  GL_FLOAT, GL_FALSE, p_attr.stride,
+            glVertexAttribPointer(i, s_attr.num_elements, GL_FLOAT, GL_FALSE, p_attr.stride,
                                   (const void *) p_attr.offset);
-        }
-    }
-    int32_t uniforms_count;
-    glGetProgramiv(desc->shader->id, GL_ACTIVE_UNIFORMS, &uniforms_count);
-    int32_t size, length;
-    uint32_t type;
-    char name[1024];
-    int32_t active_uniforms = 0;
-    for (int32_t i = 0; i < uniforms_count; i++) {
-        //TODO: SKIP
-        glGetActiveUniform(desc->shader->id, (GLuint) i, sizeof(name) / sizeof(char), &length, &size, &type, name);
-        for (int j = 0; j < MAXIMUM_PIPELINE_UNIFORMS; ++j) {
-            gfx_pipeline_uniform uniform = desc->uniforms[j];
-            if(uniform.name == 0) continue;
-            if (strcmp(uniform.name, name) == 0) {
-                struct gfx_uniform* uni = pipeline->uniforms + active_uniforms;
-                ++active_uniforms;
-                //todo: check if uniform with same index is already acitve
-                uni->id = glGetUniformLocation(desc->shader->id, name);
-                uni->offset = uniform.offset;
-                switch (type) {
-                    case GL_FLOAT: uni->gfx_uniform_set = uniform_set_f1; break;
-                    case GL_FLOAT_VEC2: uni->gfx_uniform_set = uniform_set_f2; break;
-                    case GL_FLOAT_VEC3: uni->gfx_uniform_set = uniform_set_f3; break;
-                    case GL_FLOAT_VEC4: uni->gfx_uniform_set = uniform_set_f4; break;
-                    case GL_INT: uni->gfx_uniform_set = uniform_set_i1; break;
-                    case GL_INT_VEC2: uni->gfx_uniform_set = uniform_set_i2; break;
-                    case GL_INT_VEC3: uni->gfx_uniform_set = uniform_set_i3; break;
-                    case GL_INT_VEC4: uni->gfx_uniform_set = uniform_set_i4; break;
-                    case GL_FLOAT_MAT2: uni->gfx_uniform_set = uniform_set_m2; break;
-                    case GL_FLOAT_MAT3: uni->gfx_uniform_set = uniform_set_m3; break;
-                    case GL_FLOAT_MAT4: uni->gfx_uniform_set = uniform_set_m4; break;
-                    default: ASSERT(false && "Not implemented uniform type");
-                }
-            }
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
     }
 
 
-    int32_t binding_point = 0;
-    for(int32_t i=0; i < MAXIMUM_PIPELINE_UNIFORM_BLOCKS; ++i)
-    {
-        if(binding_point >= GL_MAX_UNIFORM_BUFFER_BINDINGS) {
-            LOG_ERROR("Uniform block limit reached %s\n", desc->shader);
-            break;
-        }
-
-        gfx_pipeline_uniform_block block = desc->uniform_blocks[i];
-        if(block.buffer != 0)
-        {
-            uint32_t block_id = glGetUniformBlockIndex(desc->shader->id, block.name);
-            if(GL_INVALID_INDEX == block_id) {
-                LOG_ERROR("Uniform block with name %s has not been found for shader %s\n", block.name,
-                          desc->shader->id);
-                continue;
-            }
-            glUniformBlockBinding(desc->shader->id, block_id, binding_point);
-            glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, block.buffer->id);
-            ++binding_point;
-        }
-    }
-
-    pipeline->active_uniforms = active_uniforms;
     glBindVertexArray(0);
     return pipeline;
 }
 
-void gfx_pipeline_apply(gfx_pipeline_handle pip) {
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-
+void gfx_pipeline_bind(gfx_pipeline_handle pip) {
     glUseProgram(pip->shader->id);
     glBindVertexArray(pip->vao_id);
-    if(pip->ebo_id != GL_INVALID_INDEX)
+
+    if (pip->ebo_id != GL_INVALID_INDEX)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pip->ebo_id);
-    glUniform1i(glGetUniformLocation(pip->shader->id, "diffuse_tex"), 0);
 }
 
-void gfx_pipeline_uniforms_update(gfx_pipeline_handle pip, void* buffer, uint32_t start, int32_t length) {
-
-    //todo: remove ifs and check if uniform is enabled instead
-    glUseProgram(pip->shader->id);
-    if(length == -1) length = pip->active_uniforms;
-    if(start + length > pip->active_uniforms) length = pip->active_uniforms - start;
-    for (uint32_t i = start; i < start + length; ++i) {
-        pip->uniforms[i].gfx_uniform_set((uint32_t)pip->uniforms[i].id, (void*)((char*)buffer + pip->uniforms[i].offset));
-    }
-}
-
-void gfx_draw(gfx_draw_type type, int32_t start, int32_t length)
-{
-    glDrawArrays(type, start, length);
-}
-
-void gfx_draw_id(gfx_draw_type type, int32_t length)
-{
-    glDrawElements(type, length, GL_UNSIGNED_INT, 0);
-}
-
-void gfx_buffer_update(gfx_buffer_handle buffer, const gfx_buffer_desc * desc) {
-    glBindBuffer(gl_get_buffer_type(desc->type), buffer->id);
-    glBufferSubData(gl_get_buffer_type(desc->type), 0, desc->size, desc->data);
-}
 
 void gfx_pipeline_destroy(gfx_pipeline_handle hndl) {
-    //TODO
     glDeleteVertexArrays(1, &(hndl->vao_id));
     OS_FREE(hndl);
 }
 
-void gfx_begin_default_pass(const gfx_pass_action * action) {
-    switch (action->action) {
-        case GFX_ACTION_CLEAR:
-        glClearColor(action->value.x, action->value.y, action->value.z, action->value.w);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            break;
+void gfx_begin_pass(const gfx_pass_desc * desc) {
+
+    if(desc->fbo_handle != 0)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, desc->fbo_handle->id);
     }
+    else{
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    draw_calls_count_previous_pass = draw_calls_count_current_pass;
+    draw_calls_count_current_pass = 0;
+
+    uint32_t clear_flags = 0;
+    if((desc->actions & GFX_PASS_ACTION_CLEAR_COLOR) != 0)
+        clear_flags |= GL_COLOR_BUFFER_BIT;
+    if((desc->actions & GFX_PASS_ACTION_CLEAR_DEPTH) != 0)
+        clear_flags |= GL_DEPTH_BUFFER_BIT;
+    if((desc->actions & GFX_PASS_ACTION_CLEAR_STENCIL) != 0)
+        clear_flags |= GL_STENCIL_BUFFER_BIT;
+
+    if (clear_flags != 0) {
+        glClearColor(desc->clear_color.x, desc->clear_color.y, desc->clear_color.z, desc->clear_color.w);
+        glClear(clear_flags);
+    }
+
+    if((desc->pass_options & GFX_PASS_OPTION_DEPTH_TEST) != 0)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+    if((desc->pass_options & GFX_PASS_OPTION_CULL_FRONT) != 0) {
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);
+    }
+    else if((desc->pass_options & GFX_PASS_OPTION_CULL_BACK) != 0) {
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+    }
+    else{
+        glDisable(GL_CULL_FACE);
+    }
+
+    if((desc->pass_options & GFX_PASS_OPTION_FRAMEBUFFER_SRGB) != 0) {
+        glEnable(GL_FRAMEBUFFER_SRGB);
+    }
+    else
+        glDisable(GL_FRAMEBUFFER_SRGB);
+
 }
 
 void gfx_end_pass() {
@@ -388,27 +366,247 @@ gfx_texture_handle gfx_texture_create(const gfx_texture_desc * desc) {
     uint32_t texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, desc->width, desc->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, desc->data);
+
+
+    uint32_t tex_type_src, tex_type_dest, format;
+    switch (desc->type) {
+        case GFX_TEXTURE_TYPE_SRGBA:
+            tex_type_src = GL_SRGB_ALPHA;
+            tex_type_dest = GL_RGBA;
+            format = GL_UNSIGNED_BYTE;
+            break;
+        case GFX_TEXTURE_TYPE_SRGB:
+            tex_type_src = GL_SRGB;
+            tex_type_dest = GL_RGB;
+            format = GL_UNSIGNED_BYTE;
+            break;
+        case GFX_TEXTURE_TYPE_RGB:
+            tex_type_src = GL_RGB;
+            tex_type_dest = GL_RGB;
+            format = GL_UNSIGNED_BYTE;
+            break;
+        case GFX_TEXTURE_TYPE_RGBA:
+            tex_type_src = GL_RGBA;
+            tex_type_dest = GL_RGBA;
+            format = GL_UNSIGNED_BYTE;
+            break;
+        case GFX_TEXTURE_TYPE_DEPTH:
+            tex_type_src = GL_DEPTH_COMPONENT;
+            tex_type_dest = GL_DEPTH_COMPONENT;
+            format = GL_FLOAT;
+            break;
+        case GFX_TEXTURE_TYPE_STENCIL:
+            tex_type_src = GL_STENCIL_INDEX8;
+            tex_type_dest = GL_STENCIL_INDEX;
+            format = GL_UNSIGNED_BYTE;
+            break;
+        case GFX_TEXTURE_TYPE_DEPTH_STENCIL:
+            tex_type_src = GL_DEPTH24_STENCIL8;
+            tex_type_dest = GL_DEPTH_STENCIL;
+            format = GL_UNSIGNED_INT_24_8;
+            break;
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, tex_type_src, desc->width, desc->height, 0, tex_type_dest, format,
+                 (unsigned char *) desc->data);
+
+
+    switch (desc->wrap) {
+
+        case GFX_TEXTURE_WRAP_CLAMP:
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            break;
+        case GFX_TEXTURE_WRAP_REPEAT:
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            break;
+        case GFX_TEXTURE_WRAP_MIRROR:
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+            break;
+    }
+
+
+    if (desc->mipmaps) {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    switch (desc->filter) {
+        case GFX_TEXTURE_FILTER_LINEAR:
+            if(desc->mipmaps) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            }
+            else {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            }
+            break;
+        case GFX_TEXTURE_FILTER_NEAREST:
+            if(desc->mipmaps) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+            else{
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+            break;
+    }
+
+
     glBindTexture(GL_TEXTURE_2D, 0);
 
     gfx_texture_handle hndl = OS_MALLOC(sizeof(gfx_texture));
     hndl->width = desc->width;
     hndl->height = desc->height;
     hndl->id = texture;
+    hndl->filter = desc->filter;
+    hndl->wrap = desc->wrap;
+    hndl->type = desc->type;
+    hndl->mipmaps = desc->mipmaps;
     return hndl;
 }
 
-void gfx_texture_bind(gfx_texture_handle hndl) {
+void gfx_texture_bind(gfx_texture_handle hndl, int32_t index) {
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, hndl->id);
+    if (hndl != 0) {
+        glActiveTexture(GL_TEXTURE0 + index);
+        glBindTexture(GL_TEXTURE_2D, hndl->id);
+    }
 }
 
 void gfx_texture_destroy(gfx_texture_handle hndl) {
     glDeleteTextures(1, &(hndl->id));
     OS_FREE(hndl);
+}
+
+uint32_t gfx_draw_call_count_get() {
+    return draw_calls_count_previous_pass;
+}
+
+gfx_uniform gfx_uniform_register(gfx_shader_handle shader, const char *name, gfx_type type) {
+    gfx_uniform result = {0};
+    glUseProgram(shader->id);
+    result.id = glGetUniformLocation(shader->id, name);
+    result.enabled = true;
+    if(result.id == -1) { result.enabled = false; LOG_ERROR("Uniform not found %s\n", name); return result;}
+    switch (type) {
+        case GFX_FLOAT1: result.setter = uniform_set_f1; break;
+        case GFX_FLOAT2: result.setter = uniform_set_f2; break;
+        case GFX_FLOAT3: result.setter = uniform_set_f3; break;
+        case GFX_FLOAT4: result.setter = uniform_set_f4; break;
+        case GFX_INT1: result.setter = uniform_set_i1; break;
+        case GFX_INT2: result.setter = uniform_set_i2; break;
+        case GFX_INT3: result.setter = uniform_set_i3; break;
+        case GFX_INT4: result.setter = uniform_set_i4; break;
+        case GFX_MAT2: result.setter = uniform_set_m2; break;
+        case GFX_MAT3: result.setter = uniform_set_m3; break;
+        case GFX_MAT4: result.setter = uniform_set_m4; break;
+        default: result.enabled = false; LOG_ERROR("Uniform register failed. Not implemented uniform type: %s\n", name);
+    }
+    return result;
+}
+
+void gfx_uniform_set(gfx_uniform uniform, void *buffer) {
+    if (uniform.enabled) {
+        uniform.setter(uniform.id, buffer);
+    }
+}
+
+uint32_t gfx_blend_type_to_gl(gfx_blend_type type) {
+    switch (type) {
+
+        case GFX_BLEND_SRC_ALPHA: return GL_BLEND_SRC_ALPHA;
+        case GFX_BLEND_ONE_MINUS_SRC_ALPHA: return GL_ONE_MINUS_SRC_ALPHA;
+        case GFX_BLEND_SRC_COLOR: return GL_SRC_COLOR;
+        case GFX_BLEND_ONE_MINUS_SRC_COLOR: return GL_ONE_MINUS_SRC_COLOR;
+        case GFX_BLEND_ONE: return GL_ONE;
+        case GFX_BLEND_ZERO: return GL_ZERO;
+        case GFX_BLEND_DEST_ALPHA: return GL_BLEND_DST_ALPHA;
+        case GFX_BLEND_ONE_MINUS_DEST_ALPHA: return GL_ONE_MINUS_DST_ALPHA;
+        case GFX_BLEND_DEST_COLOR: return GL_DST_COLOR;
+        case GFX_BLEND_ONE_MINUS_DEST_COLOR: return GL_ONE_MINUS_DST_COLOR;
+    }
+    assert(0 == 1 && "Invalid blend type");
+    return GL_ZERO;
+}
+
+void gfx_blend( gfx_blend_type src, gfx_blend_type dest) {
+    glBlendFunc(gfx_blend_type_to_gl(src), gfx_blend_type_to_gl(dest));
+}
+
+void gfx_blend_enable(bool state) {
+    if(state) glEnable(GL_BLEND);
+    else glDisable(GL_BLEND);
+}
+
+gfx_framebuffer_handle gfx_framebuffer_create(struct gfx_framebuffer_desc *framebuffer_desc) {
+
+    gfx_framebuffer_handle handle = OS_MALLOC(sizeof(struct gfx_framebuffer));
+
+    glGenFramebuffers(1, &(handle->id));
+    glBindFramebuffer(GL_FRAMEBUFFER, handle->id);
+
+
+    int32_t color_attachments = 0;
+    for(int32_t i=0; i<MAXIMUM_FRAMEBUFFER_COLOR_ATTACHMENTS; ++i)
+    {
+        gfx_framebuffer_attachment* color_attachment = framebuffer_desc->color_attachments + i;
+        if(color_attachment->enabled)
+        {
+            //todo: assert texture type
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + color_attachments, GL_TEXTURE_2D, color_attachment->texture_handle->id, 0);
+            color_attachments++;
+        }
+    }
+
+    if(framebuffer_desc->depth_stencil_attachment.enabled)
+    {
+        gfx_framebuffer_attachment* depth_stencil = &framebuffer_desc->depth_stencil_attachment;
+        switch (depth_stencil->texture_handle->type) {
+
+            case GFX_TEXTURE_TYPE_DEPTH:
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                                       depth_stencil->texture_handle->id, 0);
+                break;
+            case GFX_TEXTURE_TYPE_STENCIL:
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
+                                       depth_stencil->texture_handle->id, 0);
+                break;
+            case GFX_TEXTURE_TYPE_DEPTH_STENCIL:
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
+                                       depth_stencil->texture_handle->id, 0);
+                break;
+            default: LOG_ERROR("Invalid image type passed as depth stencil attachment\n");
+        }
+    }
+
+    if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        LOG_ERROR("Could not create framebuffer\n");
+    else LOG_INFO("Framebuffer created\n");
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return handle;
+}
+
+gfx_texture_type gfx_texture_color_type_from_channels(int32_t channels, bool srgb) {
+    switch (channels) {
+        case 3:
+            if(srgb) return GFX_TEXTURE_TYPE_SRGB;
+            return GFX_TEXTURE_TYPE_RGB;
+        case 4:
+            if(srgb) return GFX_TEXTURE_TYPE_SRGBA;
+            return GFX_TEXTURE_TYPE_RGBA;
+        default: LOG_ERROR("Could not create texture type, number of channels: %i", channels);
+    }
+    return GFX_TEXTURE_TYPE_RGB;
+}
+
+void gfx_framebuffer_destroy(gfx_framebuffer_handle buffer) {
+    glDeleteFramebuffers(1, &buffer->id);
+    LOG_INFO("Framebuffer destroyed\n");
+}
+
+void gfx_shader_bind(gfx_shader_handle shader) {
+    glUseProgram(shader->id);
 }

@@ -36,6 +36,6 @@ API void file_read(file_hndl, file_buffer *);
 
 API void file_close(file_hndl);
 
-API char* file_mmap(char const* path, uint32_t* length);
+API unsigned char* file_mmap(char const* path, uint32_t* length);
 
 #endif //FILE_H

@@ -32,7 +32,7 @@ typedef struct os_chunk* os_chunk_handle;
 #define OS_FREE(ptr) os_free_proxy(ptr, __FILE__, __LINE__)
 
 API void os_allocator_init();
-API void os_allocator_finalize();
+API void os_allocator_terminate();
 
 API os_chunk_handle os_chunk_new(int32_t initial_capacity);
 API bool os_chunk_alloc(os_chunk_handle handle, uint32_t size, void** pptr);
@@ -46,6 +46,7 @@ API void *os_reallocate_proxy(void *src, uint32_t size, char const *file, uint32
 API void os_free_proxy(void *src, char const *file, uint32_t line);
 
 API int32_t os_get_tracked_allocations_length();
+API int32_t os_get_tracked_allocations_size();
 API void os_get_tracked_allocations(os_proxy_header const** allocations);
 
 #endif //ALLOCATOR_H

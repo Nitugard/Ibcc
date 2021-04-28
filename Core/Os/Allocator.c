@@ -10,15 +10,9 @@
 #include <string.h>
 
 
-#ifndef CORE_ASSERT
-#ifdef __MINGW32__
-#include <assert.h>
-#define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#else
 #include "assert.h"
 #define CORE_ASSERT(e) assert(e)
-#endif
-#endif
+
 
 
 #define ALLOC(x) malloc(x)
@@ -61,11 +55,13 @@ void *os_allocate_proxy(uint32_t size, char const *file, uint32_t line) {
         }
     }
     if(is_tracked == false) {
-        tracked_allocations = realloc(tracked_allocations,
+        tracked_allocations = REALLOC(tracked_allocations,
                                       (tracked_allocations_length + TRACKED_ALLOCATIONS_REALLOC_LENGTH) *
                                       sizeof(os_proxy_header *));
         mem->index = tracked_allocations_length;
         tracked_allocations[tracked_allocations_length] = mem;
+        os_memset(tracked_allocations + tracked_allocations_length + 1, 0, sizeof(struct os_proxy_header*) * (TRACKED_ALLOCATIONS_REALLOC_LENGTH - 1));
+
         tracked_allocations_length += TRACKED_ALLOCATIONS_REALLOC_LENGTH;
     }
 
@@ -85,11 +81,13 @@ void *os_reallocate_proxy(void *src, uint32_t size, char const *file, uint32_t l
     mem->file = file;
     mem->size = size;
     mem->realloc = true;
+    tracked_allocations[mem->index] = mem;
     total_size += size;
     return (void*)(mem + 1);
 }
 
 void os_free_proxy(void *src, char const *file, uint32_t line) {
+    if(src == 0) return;
     os_proxy_header* mem = (os_proxy_header*)(src) - 1;
     total_allocations--;
     total_size -= mem->size;
@@ -130,8 +128,11 @@ int32_t os_get_tracked_allocations_length()
         header = tracked_allocations[i];
         if (header != 0) count++;
     }
-
     return count;
+}
+
+int32_t os_get_tracked_allocations_size(){
+    return total_size;
 }
 
 void os_get_tracked_allocations(struct os_proxy_header const** allocations)
@@ -140,13 +141,13 @@ void os_get_tracked_allocations(struct os_proxy_header const** allocations)
     struct os_proxy_header* header;
     for(int32_t i=0; i < tracked_allocations_length; ++i) {
         header = tracked_allocations[i];
-        if (header != 0) allocations[count++] = header;
+        if (header != 0)
+            allocations[count++] = header;
     }
 }
 
-void os_allocator_finalize() {
-    CORE_ASSERT(os_assert_memory() && "Memory leak");
-    free(tracked_allocations);
+void os_allocator_terminate() {
+    FREE(tracked_allocations);
 }
 
 os_chunk_handle os_chunk_new(int32_t initial_capacity) {

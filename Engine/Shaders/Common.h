@@ -8,31 +8,27 @@
 #ifndef IBC_COMMON_H
 #define IBC_COMMON_H
 
-#define position_attr 0
-#define color_attr 1
-#define uv_attr 2
-#define normal_attr 3
+#define ATTR_POSITION_LOCATION 0
+#define ATTR_COLOR_LOCATION 1
+#define ATTR_UV_LOCATION 2
+#define ATTR_NORMAL_LOCATION 3
+#define ATTR_TANGENT_LOCATION 4
+#define ATTR_WEIGHTS_LOCATION 5
+#define ATTR_JOINTS_LOCATION 6
+
+#define COLOR_TEXTURE_NAME color_texture
+#define ATTR_POSITION_NAME v_pos
+#define ATTR_UV_NAME v_uv
+#define ATTR_COLOR_NAME v_color
+#define ATTR_NORMAL_NAME v_normal
 
 #define SHADER_VERSION #version 330\n
 
-#define SHADER_MATRICES \
-    uniform mat4 model;                    \
-    layout(std140, row_major) uniform matrices{ \
-        mat4 view; \
-        mat4 projection; \
-        vec3 light_pos; \
-        vec3 cam_pos; \
-    };
+#define SHADER_MVP \
+    uniform mat4 model;\
+    uniform mat4 view;\
+    uniform mat4 projection;\
 
-typedef struct SH_MVP_T{
-    float view[16];
-    float projection[16];
-
-    float light_pos[3];
-    float __pad1;
-    float cam_pos[3];
-    float __pad2;
-} SH_MVP_T;
 
 #define __STRING(x) #x
 #define STRING(x) __STRING(x)

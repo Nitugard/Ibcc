@@ -8,7 +8,7 @@ set(SRC
         Os/File.c
         Os/Log.c
         Os/Time.c
-        Math/Math.c)
+        Math/GlMath.c)
 
 add_library(${PROJECT_NAME} ${SRC})
 

@@ -8,55 +8,163 @@
 #include "Device.h"
 
 #include <GLFW/glfw3.h>
+
+#include <Os/Platform.h>
 #include <Os/Log.h>
 #include <Os/Allocator.h>
+#include <Containers/Array.h>
+#include <stdlib.h>
 
-#ifndef DEVICE_ASSERT
+typedef struct device_delta_time{
+    double t;
+    double dt;
+    bool init;
+}device_delta_time;
 
-#include <assert.h>
+typedef struct device_joystick_callback_data{
+    device_joystick_callback callback;
+    device_joystick_trigger_state flags;
+} device_joystick_callback_data;
 
-#define DEVICE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#endif
-
-typedef struct device_wnd {
-    GLFWwindow *handle;
+typedef struct device_data {
+    GLFWwindow *win_h;
     int32_t width, height;
     device_cursor_state cursor_state;
-    device_mouse_state mouse_state;
 
-    void (*device_events_keyboard_callback)(device_key, device_key_state);
+    device_joystick joystick;
+    device_delta_time time;
+    arr_handle joystick_callbacks;
 
-    void (*device_events_input_callback)(char);
+} device_data;
 
-    void (*device_events_mouse_callback)(device_mouse_state);
+device_handle active_device;
 
-    double last_time;
-    double delta_time;
-    bool delta_time_initialized;
-} device_wnd;
+//void glfw_character_callback(GLFWwindow *window, uint32_t codepoint);
+//void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y);
 
-typedef struct device_timer {
-    int64_t start_time;
-} device_timer;
+void joystick_invoke_callbacks(device_joystick_trigger_type trigger, device_joystick_trigger_state state) {
+    arr_handle *callbacks = (arr_handle *) arr_get(active_device->joystick_callbacks, trigger);
+    for (int32_t j = 0; j < arr_size(*callbacks); ++j) {
+        struct device_joystick_callback_data* data = (device_joystick_callback_data *) arr_get(*callbacks, j);
+        if((data->flags & state) != 0)
+            data->callback();
+    }
+}
 
-device_wnd wnd;
-
-void glfw_character_callback(GLFWwindow *window, uint32_t codepoint);
-
-void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_t action, int32_t mods);
-
-void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y);
-
-
-bool device_init() {
-    if (!glfwInit()) {
-        LOG_ERROR("Failed to initialize device\n");
-        return false;
+void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_t action, int32_t mods){
+    enum device_joystick_trigger_state flags = 0;
+    switch (action) {
+        case GLFW_PRESS: flags |= JOYSTICK_TRIGGER_PRESS; break;
+        case GLFW_RELEASE: flags |= JOYSTICK_TRIGGER_RELEASE; break;
+        default: break;
     }
 
-    int32_t width = 1600;
-    int32_t height = 900;
+    switch (key) {
+        case GLFW_KEY_ESCAPE: joystick_invoke_callbacks(JOYSTICK_TRIGGER_MENU, flags); break;
+        case GLFW_MOUSE_BUTTON_LEFT: joystick_invoke_callbacks(JOYSTICK_TRIGGER_SELECT, flags); break;
+        case GLFW_MOUSE_BUTTON_RIGHT: joystick_invoke_callbacks(JOYSTICK_TRIGGER_DESELECT, flags); break;
+        case GLFW_KEY_SPACE: joystick_invoke_callbacks(JOYSTICK_TRIGGER_RISE, flags); break;
+        case GLFW_KEY_LEFT_SHIFT: joystick_invoke_callbacks(JOYSTICK_TRIGGER_FALL, flags); break;
+        case GLFW_KEY_E: joystick_invoke_callbacks(JOYSTICK_TRIGGER_0, flags); break;
+        case GLFW_KEY_F: joystick_invoke_callbacks(JOYSTICK_TRIGGER_1, flags); break;
+        case GLFW_KEY_Q: joystick_invoke_callbacks(JOYSTICK_TRIGGER_2, flags); break;
+        default: break;
+    }
 
+}
+
+
+double clamp(double x, double min, double max) {
+    if (x > max) return max;
+    if (x < min) return min;
+    return x;
+}
+
+double move_towards(double val, double target, double dt)
+{
+    return (target - val) * dt + val;
+}
+
+void device_joystick_update() {
+
+    double x, y;
+    glfwGetCursorPos(active_device->win_h, &x, &y);
+    active_device->joystick.pointer.dx = (x - active_device->joystick.pointer.x) ;
+    active_device->joystick.pointer.dy = (y - active_device->joystick.pointer.y);
+    active_device->joystick.pointer.x = x;
+    active_device->joystick.pointer.y = y;
+
+    active_device->joystick.vert.raw = 0;
+    active_device->joystick.horiz.raw = 0;
+
+    if (glfwGetKey(active_device->win_h, GLFW_KEY_W) == GLFW_PRESS)
+        active_device->joystick.vert.raw += 1;
+    if (glfwGetKey(active_device->win_h, GLFW_KEY_S) == GLFW_PRESS)
+        active_device->joystick.vert.raw += -1;
+
+    if (glfwGetKey(active_device->win_h, GLFW_KEY_A) == GLFW_PRESS)
+        active_device->joystick.horiz.raw += 1;
+    if (glfwGetKey(active_device->win_h, GLFW_KEY_D) == GLFW_PRESS)
+        active_device->joystick.horiz.raw += -1;
+
+
+    active_device->joystick.horiz.value = clamp(
+            move_towards(active_device->joystick.horiz.value, active_device->joystick.horiz.raw, device_dt_get() * 10), -1, 1);
+    active_device->joystick.vert.value = clamp(
+            move_towards(active_device->joystick.vert.value, active_device->joystick.vert.raw, device_dt_get() * 10), -1, 1);
+}
+
+
+void device_window_cursor_update() {
+
+    device_cursor_state state = active_device->cursor_state;
+    device_joystick_pointer *pointer_state = &(active_device->joystick.pointer);
+    int32_t width = active_device->width;
+    int32_t height = active_device->height;
+    double x, y;
+    glfwGetCursorPos(active_device->win_h, &x, &y);
+
+    if (state.centered) {
+        x = width / 2.0;
+        y = height / 2.0;
+    }
+
+    pointer_state->x = x;
+    pointer_state->y = y;
+    glfwSetCursorPos(active_device->win_h, pointer_state->x, pointer_state->y);
+}
+
+
+void device_delta_time_update()
+{
+    if(!active_device->time.init)
+        active_device->time.init = true;
+    else
+        active_device->time.dt = glfwGetTime() - active_device->time.t;
+
+    active_device->time.t = glfwGetTime();
+}
+
+
+GLFWcursor *glfw_blank_cursor() {
+    unsigned char pixels[4];
+    os_memset(pixels, 0, sizeof(pixels));
+    GLFWimage image;
+    image.width = 1;
+    image.height = 1;
+    image.pixels = pixels;
+    return glfwCreateCursor(&image, 0, 0);
+}
+
+bool device_init() {
+
+
+    os_allocator_init();
+
+    if (!glfwInit()) {
+        LOG_ERROR("Failed to initialize glfw\n");
+        return false;
+    }
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -66,750 +174,173 @@ bool device_init() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);
 
-    GLFWwindow *window = glfwCreateWindow(width, height, "Device | Dragutin Sredojevic | 2021", NULL, NULL);
-    glfwMakeContextCurrent(window);
-    DEVICE_ASSERT(window != NULL);
-
-    if (window == NULL) {
-        LOG_ERROR("Failed to create window\n");
-        return false;
-    }
-
-    LOG_INFO("Glfw %s\n", glfwGetVersionString());
-
-    glfwSetKeyCallback(window, glfw_key_callback);
-    glfwSetCharCallback(window, glfw_character_callback);
-    glfwSetCursorPosCallback(window, glfw_cursor_pos_callback);
-
-    glfwSetInputMode(window, GLFW_STICKY_KEYS, GLFW_TRUE);
-
-    os_memset(&wnd, 0, sizeof(device_wnd));
-    wnd.handle = window;
-    wnd.device_events_input_callback = NULL;
-    wnd.device_events_keyboard_callback = NULL;
-    wnd.width = width;
-    wnd.height = height;
+    LOG_INFO("Device initialized\n");
     return true;
 }
 
 void device_terminate() {
-    glfwDestroyWindow(wnd.handle);
     glfwTerminate();
-}
 
-struct device_mouse_state device_mouse_calc_state(double x, double y, double x1, double y1) {
-    device_mouse_state state;
-    state.dx = x1 - x;
-    state.dy = y1 - y;
-    state.x = x1;
-    state.y = y1;
-    return state;
-}
-
-double clamp(double x, double min, double max) {
-    if (x > max) return max;
-    if (x < min) return min;
-    return x;
-}
-
-//workaround
-GLFWcursor *glfw_blank_cursor() {
-    char pixels[4];
-    os_memset(pixels, 0, sizeof(pixels));
-    GLFWimage image;
-    image.width = 1;
-    image.height = 1;
-    image.pixels = pixels;
-    return glfwCreateCursor(&image, 0, 0);
-}
-
-device_key glfw_key_to_device_key(int32_t key) {
-    switch (key) {
-        case GLFW_KEY_UNKNOWN :
-            return DEVICE_KEY_UNKNOWN;
-        case GLFW_KEY_SPACE :
-            return DEVICE_KEY_SPACE;
-        case GLFW_KEY_APOSTROPHE :
-            return DEVICE_KEY_APOSTROPHE;
-        case GLFW_KEY_COMMA :
-            return DEVICE_KEY_COMMA;
-        case GLFW_KEY_MINUS :
-            return DEVICE_KEY_MINUS;
-        case GLFW_KEY_PERIOD :
-            return DEVICE_KEY_PERIOD;
-        case GLFW_KEY_SLASH :
-            return DEVICE_KEY_SLASH;
-        case GLFW_KEY_0 :
-            return DEVICE_KEY_0;
-        case GLFW_KEY_1 :
-            return DEVICE_KEY_1;
-        case GLFW_KEY_2 :
-            return DEVICE_KEY_2;
-        case GLFW_KEY_3 :
-            return DEVICE_KEY_3;
-        case GLFW_KEY_4 :
-            return DEVICE_KEY_4;
-        case GLFW_KEY_5 :
-            return DEVICE_KEY_5;
-        case GLFW_KEY_6 :
-            return DEVICE_KEY_6;
-        case GLFW_KEY_7 :
-            return DEVICE_KEY_7;
-        case GLFW_KEY_8 :
-            return DEVICE_KEY_8;
-        case GLFW_KEY_9 :
-            return DEVICE_KEY_9;
-        case GLFW_KEY_SEMICOLON :
-            return DEVICE_KEY_SEMICOLON;
-        case GLFW_KEY_EQUAL :
-            return DEVICE_KEY_EQUAL;
-        case GLFW_KEY_A :
-            return DEVICE_KEY_A;
-        case GLFW_KEY_B :
-            return DEVICE_KEY_B;
-        case GLFW_KEY_C :
-            return DEVICE_KEY_C;
-        case GLFW_KEY_D :
-            return DEVICE_KEY_D;
-        case GLFW_KEY_E :
-            return DEVICE_KEY_E;
-        case GLFW_KEY_F :
-            return DEVICE_KEY_F;
-        case GLFW_KEY_G :
-            return DEVICE_KEY_G;
-        case GLFW_KEY_H :
-            return DEVICE_KEY_H;
-        case GLFW_KEY_I :
-            return DEVICE_KEY_I;
-        case GLFW_KEY_J :
-            return DEVICE_KEY_J;
-        case GLFW_KEY_K :
-            return DEVICE_KEY_K;
-        case GLFW_KEY_L :
-            return DEVICE_KEY_L;
-        case GLFW_KEY_M :
-            return DEVICE_KEY_M;
-        case GLFW_KEY_N :
-            return DEVICE_KEY_N;
-        case GLFW_KEY_O :
-            return DEVICE_KEY_O;
-        case GLFW_KEY_P :
-            return DEVICE_KEY_P;
-        case GLFW_KEY_Q :
-            return DEVICE_KEY_Q;
-        case GLFW_KEY_R :
-            return DEVICE_KEY_R;
-        case GLFW_KEY_S :
-            return DEVICE_KEY_S;
-        case GLFW_KEY_T :
-            return DEVICE_KEY_T;
-        case GLFW_KEY_U :
-            return DEVICE_KEY_U;
-        case GLFW_KEY_V :
-            return DEVICE_KEY_V;
-        case GLFW_KEY_W :
-            return DEVICE_KEY_W;
-        case GLFW_KEY_X :
-            return DEVICE_KEY_X;
-        case GLFW_KEY_Y :
-            return DEVICE_KEY_Y;
-        case GLFW_KEY_Z :
-            return DEVICE_KEY_Z;
-        case GLFW_KEY_LEFT_BRACKET :
-            return DEVICE_KEY_LEFT_BRACKET;
-        case GLFW_KEY_BACKSLASH :
-            return DEVICE_KEY_BACKSLASH;
-        case GLFW_KEY_RIGHT_BRACKET :
-            return DEVICE_KEY_RIGHT_BRACKET;
-        case GLFW_KEY_GRAVE_ACCENT :
-            return DEVICE_KEY_GRAVE_ACCENT;
-        case GLFW_KEY_WORLD_1 :
-            return DEVICE_KEY_WORLD_1;
-        case GLFW_KEY_WORLD_2 :
-            return DEVICE_KEY_WORLD_2;
-        case GLFW_KEY_ESCAPE :
-            return DEVICE_KEY_ESCAPE;
-        case GLFW_KEY_ENTER :
-            return DEVICE_KEY_ENTER;
-        case GLFW_KEY_TAB :
-            return DEVICE_KEY_TAB;
-        case GLFW_KEY_BACKSPACE :
-            return DEVICE_KEY_BACKSPACE;
-        case GLFW_KEY_INSERT :
-            return DEVICE_KEY_INSERT;
-        case GLFW_KEY_DELETE :
-            return DEVICE_KEY_DELETE;
-        case GLFW_KEY_RIGHT :
-            return DEVICE_KEY_RIGHT;
-        case GLFW_KEY_LEFT :
-            return DEVICE_KEY_LEFT;
-        case GLFW_KEY_DOWN :
-            return DEVICE_KEY_DOWN;
-        case GLFW_KEY_UP :
-            return DEVICE_KEY_UP;
-        case GLFW_KEY_PAGE_UP :
-            return DEVICE_KEY_PAGE_UP;
-        case GLFW_KEY_PAGE_DOWN :
-            return DEVICE_KEY_PAGE_DOWN;
-        case GLFW_KEY_HOME :
-            return DEVICE_KEY_HOME;
-        case GLFW_KEY_END :
-            return DEVICE_KEY_END;
-        case GLFW_KEY_CAPS_LOCK :
-            return DEVICE_KEY_CAPS_LOCK;
-        case GLFW_KEY_SCROLL_LOCK :
-            return DEVICE_KEY_SCROLL_LOCK;
-        case GLFW_KEY_NUM_LOCK :
-            return DEVICE_KEY_NUM_LOCK;
-        case GLFW_KEY_PRINT_SCREEN :
-            return DEVICE_KEY_PRINT_SCREEN;
-        case GLFW_KEY_PAUSE :
-            return DEVICE_KEY_PAUSE;
-        case GLFW_KEY_F1 :
-            return DEVICE_KEY_F1;
-        case GLFW_KEY_F2 :
-            return DEVICE_KEY_F2;
-        case GLFW_KEY_F3 :
-            return DEVICE_KEY_F3;
-        case GLFW_KEY_F4 :
-            return DEVICE_KEY_F4;
-        case GLFW_KEY_F5 :
-            return DEVICE_KEY_F5;
-        case GLFW_KEY_F6 :
-            return DEVICE_KEY_F6;
-        case GLFW_KEY_F7 :
-            return DEVICE_KEY_F7;
-        case GLFW_KEY_F8 :
-            return DEVICE_KEY_F8;
-        case GLFW_KEY_F9 :
-            return DEVICE_KEY_F9;
-        case GLFW_KEY_F10 :
-            return DEVICE_KEY_F10;
-        case GLFW_KEY_F11 :
-            return DEVICE_KEY_F11;
-        case GLFW_KEY_F12 :
-            return DEVICE_KEY_F12;
-        case GLFW_KEY_F13 :
-            return DEVICE_KEY_F13;
-        case GLFW_KEY_F14 :
-            return DEVICE_KEY_F14;
-        case GLFW_KEY_F15 :
-            return DEVICE_KEY_F15;
-        case GLFW_KEY_F16 :
-            return DEVICE_KEY_F16;
-        case GLFW_KEY_F17 :
-            return DEVICE_KEY_F17;
-        case GLFW_KEY_F18 :
-            return DEVICE_KEY_F18;
-        case GLFW_KEY_F19 :
-            return DEVICE_KEY_F19;
-        case GLFW_KEY_F20 :
-            return DEVICE_KEY_F20;
-        case GLFW_KEY_F21 :
-            return DEVICE_KEY_F21;
-        case GLFW_KEY_F22 :
-            return DEVICE_KEY_F22;
-        case GLFW_KEY_F23 :
-            return DEVICE_KEY_F23;
-        case GLFW_KEY_F24 :
-            return DEVICE_KEY_F24;
-        case GLFW_KEY_F25 :
-            return DEVICE_KEY_F25;
-        case GLFW_KEY_KP_0 :
-            return DEVICE_KEY_KP_0;
-        case GLFW_KEY_KP_1 :
-            return DEVICE_KEY_KP_1;
-        case GLFW_KEY_KP_2 :
-            return DEVICE_KEY_KP_2;
-        case GLFW_KEY_KP_3 :
-            return DEVICE_KEY_KP_3;
-        case GLFW_KEY_KP_4 :
-            return DEVICE_KEY_KP_4;
-        case GLFW_KEY_KP_5 :
-            return DEVICE_KEY_KP_5;
-        case GLFW_KEY_KP_6 :
-            return DEVICE_KEY_KP_6;
-        case GLFW_KEY_KP_7 :
-            return DEVICE_KEY_KP_7;
-        case GLFW_KEY_KP_8 :
-            return DEVICE_KEY_KP_8;
-        case GLFW_KEY_KP_9 :
-            return DEVICE_KEY_KP_9;
-        case GLFW_KEY_KP_DECIMAL :
-            return DEVICE_KEY_KP_DECIMAL;
-        case GLFW_KEY_KP_DIVIDE :
-            return DEVICE_KEY_KP_DIVIDE;
-        case GLFW_KEY_KP_MULTIPLY :
-            return DEVICE_KEY_KP_MULTIPLY;
-        case GLFW_KEY_KP_SUBTRACT :
-            return DEVICE_KEY_KP_SUBTRACT;
-        case GLFW_KEY_KP_ADD :
-            return DEVICE_KEY_KP_ADD;
-        case GLFW_KEY_KP_ENTER :
-            return DEVICE_KEY_KP_ENTER;
-        case GLFW_KEY_KP_EQUAL :
-            return DEVICE_KEY_KP_EQUAL;
-        case GLFW_KEY_LEFT_SHIFT :
-            return DEVICE_KEY_LEFT_SHIFT;
-        case GLFW_KEY_LEFT_CONTROL :
-            return DEVICE_KEY_LEFT_CONTROL;
-        case GLFW_KEY_LEFT_ALT :
-            return DEVICE_KEY_LEFT_ALT;
-        case GLFW_KEY_LEFT_SUPER :
-            return DEVICE_KEY_LEFT_SUPER;
-        case GLFW_KEY_RIGHT_SHIFT :
-            return DEVICE_KEY_RIGHT_SHIFT;
-        case GLFW_KEY_RIGHT_CONTROL :
-            return DEVICE_KEY_RIGHT_CONTROL;
-        case GLFW_KEY_RIGHT_ALT :
-            return DEVICE_KEY_RIGHT_ALT;
-        case GLFW_KEY_RIGHT_SUPER :
-            return DEVICE_KEY_RIGHT_SUPER;
-        case GLFW_KEY_MENU :
-            return DEVICE_KEY_MENU;
-        case GLFW_MOUSE_BUTTON_1 :
-            return DEVICE_MOUSE_BUTTON_1;
-        case GLFW_MOUSE_BUTTON_2 :
-            return DEVICE_MOUSE_BUTTON_2;
-        case GLFW_MOUSE_BUTTON_3 :
-            return DEVICE_MOUSE_BUTTON_3;
-        case GLFW_MOUSE_BUTTON_4 :
-            return DEVICE_MOUSE_BUTTON_4;
-        case GLFW_MOUSE_BUTTON_5 :
-            return DEVICE_MOUSE_BUTTON_5;
-        case GLFW_MOUSE_BUTTON_6 :
-            return DEVICE_MOUSE_BUTTON_6;
-        case GLFW_MOUSE_BUTTON_7 :
-            return DEVICE_MOUSE_BUTTON_7;
-        case GLFW_MOUSE_BUTTON_8 :
-            return DEVICE_MOUSE_BUTTON_8;
-        default:
-            return DEVICE_KEY_UNKNOWN;
+    uint32_t tracked_allocations = os_get_tracked_allocations_length();
+    if(tracked_allocations > 0) {
+        const os_proxy_header **allocations = malloc(sizeof(void *) * tracked_allocations);
+        os_get_tracked_allocations(allocations);
+        for (unsigned int i = 0; i < tracked_allocations; ++i) {
+            const struct os_proxy_header *data = allocations[i];
+            if (data != 0)
+                LOG_ERROR("Leak detected, size: %i\n%s:%i\n", data->size, data->file, data->line);
+        }
+        free(allocations);
+        LOG_ERROR("Number of leaks %i, leak size: %i\n", tracked_allocations, os_get_tracked_allocations_size());
     }
+
+    os_allocator_terminate();
 }
 
-int32_t device_key_to_glfw_key(device_key key) {
+device_handle device_new(const device_desc *desc) {
 
-    switch (key) {
-        case DEVICE_KEY_UNKNOWN :
-            return GLFW_KEY_UNKNOWN;
-        case DEVICE_KEY_SPACE :
-            return GLFW_KEY_SPACE;
-        case DEVICE_KEY_APOSTROPHE :
-            return GLFW_KEY_APOSTROPHE;
-        case DEVICE_KEY_COMMA :
-            return GLFW_KEY_COMMA;
-        case DEVICE_KEY_MINUS :
-            return GLFW_KEY_MINUS;
-        case DEVICE_KEY_PERIOD :
-            return GLFW_KEY_PERIOD;
-        case DEVICE_KEY_SLASH :
-            return GLFW_KEY_SLASH;
-        case DEVICE_KEY_0 :
-            return GLFW_KEY_0;
-        case DEVICE_KEY_1 :
-            return GLFW_KEY_1;
-        case DEVICE_KEY_2 :
-            return GLFW_KEY_2;
-        case DEVICE_KEY_3 :
-            return GLFW_KEY_3;
-        case DEVICE_KEY_4 :
-            return GLFW_KEY_4;
-        case DEVICE_KEY_5 :
-            return GLFW_KEY_5;
-        case DEVICE_KEY_6 :
-            return GLFW_KEY_6;
-        case DEVICE_KEY_7 :
-            return GLFW_KEY_7;
-        case DEVICE_KEY_8 :
-            return GLFW_KEY_8;
-        case DEVICE_KEY_9 :
-            return GLFW_KEY_9;
-        case DEVICE_KEY_SEMICOLON :
-            return GLFW_KEY_SEMICOLON;
-        case DEVICE_KEY_EQUAL :
-            return GLFW_KEY_EQUAL;
-        case DEVICE_KEY_A :
-            return GLFW_KEY_A;
-        case DEVICE_KEY_B :
-            return GLFW_KEY_B;
-        case DEVICE_KEY_C :
-            return GLFW_KEY_C;
-        case DEVICE_KEY_D :
-            return GLFW_KEY_D;
-        case DEVICE_KEY_E :
-            return GLFW_KEY_E;
-        case DEVICE_KEY_F :
-            return GLFW_KEY_F;
-        case DEVICE_KEY_G :
-            return GLFW_KEY_G;
-        case DEVICE_KEY_H :
-            return GLFW_KEY_H;
-        case DEVICE_KEY_I :
-            return GLFW_KEY_I;
-        case DEVICE_KEY_J :
-            return GLFW_KEY_J;
-        case DEVICE_KEY_K :
-            return GLFW_KEY_K;
-        case DEVICE_KEY_L :
-            return GLFW_KEY_L;
-        case DEVICE_KEY_M :
-            return GLFW_KEY_M;
-        case DEVICE_KEY_N :
-            return GLFW_KEY_N;
-        case DEVICE_KEY_O :
-            return GLFW_KEY_O;
-        case DEVICE_KEY_P :
-            return GLFW_KEY_P;
-        case DEVICE_KEY_Q :
-            return GLFW_KEY_Q;
-        case DEVICE_KEY_R :
-            return GLFW_KEY_R;
-        case DEVICE_KEY_S :
-            return GLFW_KEY_S;
-        case DEVICE_KEY_T :
-            return GLFW_KEY_T;
-        case DEVICE_KEY_U :
-            return GLFW_KEY_U;
-        case DEVICE_KEY_V :
-            return GLFW_KEY_V;
-        case DEVICE_KEY_W :
-            return GLFW_KEY_W;
-        case DEVICE_KEY_X :
-            return GLFW_KEY_X;
-        case DEVICE_KEY_Y :
-            return GLFW_KEY_Y;
-        case DEVICE_KEY_Z :
-            return GLFW_KEY_Z;
-        case DEVICE_KEY_LEFT_BRACKET :
-            return GLFW_KEY_LEFT_BRACKET;
-        case DEVICE_KEY_BACKSLASH :
-            return GLFW_KEY_BACKSLASH;
-        case DEVICE_KEY_RIGHT_BRACKET :
-            return GLFW_KEY_RIGHT_BRACKET;
-        case DEVICE_KEY_GRAVE_ACCENT :
-            return GLFW_KEY_GRAVE_ACCENT;
-        case DEVICE_KEY_WORLD_1 :
-            return GLFW_KEY_WORLD_1;
-        case DEVICE_KEY_WORLD_2 :
-            return GLFW_KEY_WORLD_2;
-        case DEVICE_KEY_ESCAPE :
-            return GLFW_KEY_ESCAPE;
-        case DEVICE_KEY_ENTER :
-            return GLFW_KEY_ENTER;
-        case DEVICE_KEY_TAB :
-            return GLFW_KEY_TAB;
-        case DEVICE_KEY_BACKSPACE :
-            return GLFW_KEY_BACKSPACE;
-        case DEVICE_KEY_INSERT :
-            return GLFW_KEY_INSERT;
-        case DEVICE_KEY_DELETE :
-            return GLFW_KEY_DELETE;
-        case DEVICE_KEY_RIGHT :
-            return GLFW_KEY_RIGHT;
-        case DEVICE_KEY_LEFT :
-            return GLFW_KEY_LEFT;
-        case DEVICE_KEY_DOWN :
-            return GLFW_KEY_DOWN;
-        case DEVICE_KEY_UP :
-            return GLFW_KEY_UP;
-        case DEVICE_KEY_PAGE_UP :
-            return GLFW_KEY_PAGE_UP;
-        case DEVICE_KEY_PAGE_DOWN :
-            return GLFW_KEY_PAGE_DOWN;
-        case DEVICE_KEY_HOME :
-            return GLFW_KEY_HOME;
-        case DEVICE_KEY_END :
-            return GLFW_KEY_END;
-        case DEVICE_KEY_CAPS_LOCK :
-            return GLFW_KEY_CAPS_LOCK;
-        case DEVICE_KEY_SCROLL_LOCK :
-            return GLFW_KEY_SCROLL_LOCK;
-        case DEVICE_KEY_NUM_LOCK :
-            return GLFW_KEY_NUM_LOCK;
-        case DEVICE_KEY_PRINT_SCREEN :
-            return GLFW_KEY_PRINT_SCREEN;
-        case DEVICE_KEY_PAUSE :
-            return GLFW_KEY_PAUSE;
-        case DEVICE_KEY_F1 :
-            return GLFW_KEY_F1;
-        case DEVICE_KEY_F2 :
-            return GLFW_KEY_F2;
-        case DEVICE_KEY_F3 :
-            return GLFW_KEY_F3;
-        case DEVICE_KEY_F4 :
-            return GLFW_KEY_F4;
-        case DEVICE_KEY_F5 :
-            return GLFW_KEY_F5;
-        case DEVICE_KEY_F6 :
-            return GLFW_KEY_F6;
-        case DEVICE_KEY_F7 :
-            return GLFW_KEY_F7;
-        case DEVICE_KEY_F8 :
-            return GLFW_KEY_F8;
-        case DEVICE_KEY_F9 :
-            return GLFW_KEY_F9;
-        case DEVICE_KEY_F10 :
-            return GLFW_KEY_F10;
-        case DEVICE_KEY_F11 :
-            return GLFW_KEY_F11;
-        case DEVICE_KEY_F12 :
-            return GLFW_KEY_F12;
-        case DEVICE_KEY_F13 :
-            return GLFW_KEY_F13;
-        case DEVICE_KEY_F14 :
-            return GLFW_KEY_F14;
-        case DEVICE_KEY_F15 :
-            return GLFW_KEY_F15;
-        case DEVICE_KEY_F16 :
-            return GLFW_KEY_F16;
-        case DEVICE_KEY_F17 :
-            return GLFW_KEY_F17;
-        case DEVICE_KEY_F18 :
-            return GLFW_KEY_F18;
-        case DEVICE_KEY_F19 :
-            return GLFW_KEY_F19;
-        case DEVICE_KEY_F20 :
-            return GLFW_KEY_F20;
-        case DEVICE_KEY_F21 :
-            return GLFW_KEY_F21;
-        case DEVICE_KEY_F22 :
-            return GLFW_KEY_F22;
-        case DEVICE_KEY_F23 :
-            return GLFW_KEY_F23;
-        case DEVICE_KEY_F24 :
-            return GLFW_KEY_F24;
-        case DEVICE_KEY_F25 :
-            return GLFW_KEY_F25;
-        case DEVICE_KEY_KP_0 :
-            return GLFW_KEY_KP_0;
-        case DEVICE_KEY_KP_1 :
-            return GLFW_KEY_KP_1;
-        case DEVICE_KEY_KP_2 :
-            return GLFW_KEY_KP_2;
-        case DEVICE_KEY_KP_3 :
-            return GLFW_KEY_KP_3;
-        case DEVICE_KEY_KP_4 :
-            return GLFW_KEY_KP_4;
-        case DEVICE_KEY_KP_5 :
-            return GLFW_KEY_KP_5;
-        case DEVICE_KEY_KP_6 :
-            return GLFW_KEY_KP_6;
-        case DEVICE_KEY_KP_7 :
-            return GLFW_KEY_KP_7;
-        case DEVICE_KEY_KP_8 :
-            return GLFW_KEY_KP_8;
-        case DEVICE_KEY_KP_9 :
-            return GLFW_KEY_KP_9;
-        case DEVICE_KEY_KP_DECIMAL :
-            return GLFW_KEY_KP_DECIMAL;
-        case DEVICE_KEY_KP_DIVIDE :
-            return GLFW_KEY_KP_DIVIDE;
-        case DEVICE_KEY_KP_MULTIPLY :
-            return GLFW_KEY_KP_MULTIPLY;
-        case DEVICE_KEY_KP_SUBTRACT :
-            return GLFW_KEY_KP_SUBTRACT;
-        case DEVICE_KEY_KP_ADD :
-            return GLFW_KEY_KP_ADD;
-        case DEVICE_KEY_KP_ENTER :
-            return GLFW_KEY_KP_ENTER;
-        case DEVICE_KEY_KP_EQUAL :
-            return GLFW_KEY_KP_EQUAL;
-        case DEVICE_KEY_LEFT_SHIFT :
-            return GLFW_KEY_LEFT_SHIFT;
-        case DEVICE_KEY_LEFT_CONTROL :
-            return GLFW_KEY_LEFT_CONTROL;
-        case DEVICE_KEY_LEFT_ALT :
-            return GLFW_KEY_LEFT_ALT;
-        case DEVICE_KEY_LEFT_SUPER :
-            return GLFW_KEY_LEFT_SUPER;
-        case DEVICE_KEY_RIGHT_SHIFT :
-            return GLFW_KEY_RIGHT_SHIFT;
-        case DEVICE_KEY_RIGHT_CONTROL :
-            return GLFW_KEY_RIGHT_CONTROL;
-        case DEVICE_KEY_RIGHT_ALT :
-            return GLFW_KEY_RIGHT_ALT;
-        case DEVICE_KEY_RIGHT_SUPER :
-            return GLFW_KEY_RIGHT_SUPER;
-        case DEVICE_KEY_MENU :
-            return GLFW_KEY_MENU;
-        case DEVICE_MOUSE_BUTTON_1 :
-            return GLFW_MOUSE_BUTTON_1;
-        case DEVICE_MOUSE_BUTTON_2 :
-            return GLFW_MOUSE_BUTTON_2;
-        case DEVICE_MOUSE_BUTTON_3 :
-            return GLFW_MOUSE_BUTTON_3;
-        case DEVICE_MOUSE_BUTTON_4 :
-            return GLFW_MOUSE_BUTTON_4;
-        case DEVICE_MOUSE_BUTTON_5 :
-            return GLFW_MOUSE_BUTTON_5;
-        case DEVICE_MOUSE_BUTTON_6 :
-            return GLFW_MOUSE_BUTTON_6;
-        case DEVICE_MOUSE_BUTTON_7 :
-            return GLFW_MOUSE_BUTTON_7;
-        case DEVICE_MOUSE_BUTTON_8 :
-            return GLFW_MOUSE_BUTTON_8;
-        default:
-            return GLFW_KEY_UNKNOWN;
-    }
-}
+    glfwWindowHint(GLFW_SAMPLES, desc->msaa);
 
-device_key_state glfw_key_action_to_device_state(int32_t action) {
-    switch (action) {
-        case GLFW_PRESS:
-            return DEVICE_PRESS_ACTION;
-        case GLFW_REPEAT:
-            return DEVICE_HOLD_ACTION;
-        case GLFW_RELEASE:
-            return DEVICE_RELEASE_ACTION;
-        default:
-            return DEVICE_UNKNOWN_ACTION;
-    }
-}
-
-void glfw_character_callback(GLFWwindow *window, uint32_t codepoint) {
-    if (wnd.device_events_input_callback != NULL) {
-        wnd.device_events_input_callback((char) codepoint);
-    }
-}
-
-void glfw_key_callback(GLFWwindow *window, int32_t key, int32_t scancode, int32_t action, int32_t mods) {
-
-    if (wnd.device_events_keyboard_callback != NULL) {
-        wnd.device_events_keyboard_callback(glfw_key_to_device_key(key), glfw_key_action_to_device_state(action));
-    }
-}
-
-void glfw_cursor_pos_callback(GLFWwindow *window, double x, double y) {
-    if (wnd.device_events_mouse_callback != NULL) {
-        wnd.device_events_mouse_callback(wnd.mouse_state);
-    }
-}
-
-device_key_state device_events_get_key(device_key key) {
-    uint32_t gkey = device_key_to_glfw_key(key);
-    uint32_t state = glfwGetKey(wnd.handle, gkey);
-    return glfw_key_action_to_device_state(state);
-}
-
-device_mouse_state device_events_get_mouse() {
-    return wnd.mouse_state;
-}
-
-void device_window_refresh() {
-    glfwSwapBuffers(wnd.handle);
-}
-
-void device_events_poll(void) {
-    if(!wnd.delta_time_initialized)
+    const GLFWvidmode * mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+    int32_t w, h;
+    GLFWmonitor* monitor = 0;
+    if(desc->fullscreen)
     {
-        wnd.delta_time_initialized = true;
+        w = mode->width;
+        h = mode->height;
+        monitor = glfwGetPrimaryMonitor();
     }
     else{
-        wnd.delta_time = device_get_time() - wnd.last_time;
+        w = desc->width;
+        h = desc->height;
+    }
+    GLFWwindow *window = glfwCreateWindow(w, h, desc->name , monitor, NULL);
+    if(window == 0) return 0;
+    glfwMakeContextCurrent(window);
+
+    LOG_INFO("Glfw %s\n", glfwGetVersionString());
+
+    glfwSetKeyCallback(window, glfw_key_callback);
+    //glfwSetCharCallback(window, glfw_character_callback);
+    //glfwSetCursorPosCallback(window, glfw_cursor_pos_callback);
+    glfwSetInputMode(window, GLFW_STICKY_KEYS, GLFW_TRUE);
+
+    arr_handle joystick_callbacks = arr_new(sizeof(arr_handle), JOYSTICK_TRIGGER_COUNT);
+    arr_resize(joystick_callbacks, JOYSTICK_TRIGGER_COUNT);
+    arr_handle callbacks_array;
+    for(uint32_t i=0; i<JOYSTICK_TRIGGER_COUNT; ++i) {
+        callbacks_array = arr_new(sizeof(device_joystick_callback_data), 1);
+        arr_set(joystick_callbacks, i, &callbacks_array);
     }
 
-    wnd.last_time = device_get_time();
-    glfwPollEvents();
+    device_handle handle = OS_MALLOC(sizeof(device_data));
+    os_memset(handle, 0, sizeof(device_data));
+
+    handle->win_h = window;
+    handle->width = w;
+    handle->height = h;
+    handle->joystick_callbacks = joystick_callbacks;
+    return handle;
+
+}
+
+void device_delete(device_handle handle) {
+    glfwMakeContextCurrent(0);
+    glfwDestroyWindow(handle->win_h);
+    for(int i=0; i<JOYSTICK_TRIGGER_COUNT; ++i) {
+        arr_handle *callbacks = (arr_handle *) arr_get(active_device->joystick_callbacks, i);
+        arr_delete(*callbacks);
+    }
+    arr_delete(active_device->joystick_callbacks);
+
+    OS_FREE(handle);
+}
+
+void device_set_current(device_handle handle) {
+    active_device = handle;
+}
+
+void device_refresh() {
+    ASSERT(active_device != 0);
+
+    glfwSwapBuffers(active_device->win_h);
 }
 
 bool device_window_valid() {
-    if (wnd.handle == NULL)
+    if (active_device->win_h == NULL)
         return false;
-    if (glfwWindowShouldClose(wnd.handle))
+    if (glfwWindowShouldClose(active_device->win_h))
         return false;
 
     return true;
 }
 
-
-void device_events_keys_set_callback(void (*callback)(device_key, device_key_state)) {
-
-    wnd.device_events_keyboard_callback = callback;
-}
-
-void device_events_input_set_callback(void (*callback)(char)) {
-    wnd.device_events_input_callback = callback;
-}
-
-
 void device_window_close() {
-    glfwSetWindowShouldClose(wnd.handle, true);
+    glfwSetWindowShouldClose(active_device->win_h, true);
 }
 
-void device_window_cursor_set_state(const device_cursor_state *state) {
-
-//    if(wnd->cursor_state.centered != state->centered);
-//    if(wnd->cursor_state.wrap != state->wrap);
-//    if(wnd->cursor_state.confined != state->confined);
-
+void device_window_cursor_set(const device_cursor_state *state) {
     if (!state->visible) {
-        glfwSetCursor(wnd.handle, glfw_blank_cursor());
+        glfwSetCursor(active_device->win_h, glfw_blank_cursor());
     } else {
-        glfwSetCursor(wnd.handle, NULL);
+        glfwSetCursor(active_device->win_h, NULL);
     }
-
-
-    wnd.cursor_state = *state;
+    active_device->cursor_state = *state;
 }
 
 
-device_cursor_state device_window_cursor_get_state() {
-    return wnd.cursor_state;
+device_joystick device_joystick_get() {
+    return active_device->joystick;
 }
 
-void device_events_mouse_set_callback(void (*callback)(device_mouse_state)) {
-    wnd.device_events_mouse_callback = callback;
+double device_dt_get() {
+    return active_device->time.dt;
 }
 
+double device_time_get() {
+   return glfwGetTime();
+}
 
-void device_window_cursor_update() {
+void device_joystick_trigger_register(device_joystick_trigger_type trigger_type,
+                                                                 device_joystick_trigger_state trigger_state_flags,
+                                                                 device_joystick_callback callback) {
 
+    device_joystick_callback_data data = {.callback = callback, .flags = trigger_state_flags};
+    arr_handle *callbacks = (arr_handle *) arr_get(active_device->joystick_callbacks, trigger_type);
+    for(int32_t j=0; j<arr_size(*callbacks); ++j) {
+        if (*((device_joystick_callback_data *) arr_get(*callbacks, j))->callback == callback) {
+            LOG_ERROR("Joystick callback %i already registered\n", callback);
+            return;
+        }
+    }
+    arr_add(*callbacks, &data);
+    LOG_INFO("Joystick callback %i registered\n", callback);
+}
 
-    device_cursor_state state = wnd.cursor_state;
-    device_mouse_state *mouse_state = &(wnd.mouse_state);
-    int32_t width = wnd.width;
-    int32_t height = wnd.height;
-    double x, y;
-    glfwGetCursorPos(wnd.handle, &x, &y);
-
-    if (state.centered) {
-        x = width / 2.0;
-        y = height / 2.0;
-    } else {
-        if (x < 0 || x > width || y < 0 || y > height) {
-            if (state.confined) {
-                x = clamp(x, 0, width);
-                y = clamp(y, 0, height);
-            } else if (state.wrap) {
-                while (x > width) x -= width;
-                while (x < 0) x += width;
-                while (y > height) y -= height;
-                while (y < 0) y += height;
+void device_joystick_trigger_unregister(device_joystick_callback callback) {
+    for(int i=0; i<JOYSTICK_TRIGGER_COUNT; ++i) {
+        arr_handle *callbacks = (arr_handle *) arr_get(active_device->joystick_callbacks, i);
+        for (int32_t j = 0; j < arr_size(*callbacks); ++j) {
+            if (*((device_joystick_callback_data *) arr_get(*callbacks, j))->callback == callback) {
+                arr_remove_swap(*callbacks, j);
+                LOG_INFO("Joystick callback %i removed\n", callback);
+                break;
             }
         }
     }
 
-    //mouse state delta calculations should not be affected by this transformation!
-    mouse_state->x = x;
-    mouse_state->y = y;
-    glfwSetCursorPos(wnd.handle, mouse_state->x, mouse_state->y);
-
 }
 
-void device_window_mouse_update() {
-
-    double x, y;
-
-    glfwGetCursorPos(wnd.handle, &x, &y);
-    wnd.mouse_state = device_mouse_calc_state(wnd.mouse_state.x, wnd.mouse_state.y, x, y);
+void device_window_dimensions_get(int32_t *width, int32_t *height) {
+    *width = active_device->width;
+    *height = active_device->height;
 }
 
-double device_get_time() {
-    return glfwGetTime();
-}
+void device_update_events() {
 
-double device_events_get_dt() {
-    return wnd.delta_time;
-}
+    device_delta_time_update();
+    device_joystick_update();
+    device_window_cursor_update();
 
+    glfwPollEvents();
+}

@@ -13,15 +13,8 @@
 #include <unistd.h> //access
 #endif
 
-#ifndef CORE_ASSERT
-#ifdef __MINGW32__
-#include <assert.h>
-#define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#else
 #include "assert.h"
 #define CORE_ASSERT(e) assert(e)
-#endif
-#endif
 
 
 #ifdef _WIN32
@@ -95,7 +88,7 @@ const char *file_path(file_hndl hndl) {
     return hndl->fpath;
 }
 
-char *file_mmap(const char *path, uint32_t* length) {
+unsigned char *file_mmap(const char *path, uint32_t* length) {
     *length = 0;
 #ifdef _WIN32
     HANDLE file =
@@ -109,7 +102,7 @@ char *file_mmap(const char *path, uint32_t* length) {
     CORE_ASSERT(fileMapping != INVALID_HANDLE_VALUE);
 
     LPVOID fileMapView = MapViewOfFile(fileMapping, FILE_MAP_READ, 0, 0, 0);
-    char *fileMapViewChar = (char *) fileMapView;
+    unsigned char *fileMapViewChar = (unsigned char *) fileMapView;
     CORE_ASSERT(fileMapView != NULL);
 
     DWORD file_size = GetFileSize(file, NULL);

@@ -7,44 +7,44 @@
 #include "Array.h"
 #include <string.h>
 
-#ifndef CORE_ASSERT
-#ifdef __MINGW32__
-#include <assert.h>
-#define CORE_ASSERT(e) ((e) ? (void)0 : _assert(#e, __FILE__, __LINE__))
-#else
+
 #include "assert.h"
 #define CORE_ASSERT(e) assert(e)
-#endif
-#endif
 
 typedef struct arr_data
 {
+    void* data;
     int32_t element_size;
     int32_t cur_count;
     int32_t max_count;
 
 } arr_data;
 
-#define PTR(arr, i) ((char*)((arr) + 1) + (arr)->element_size * (i))
+#define PTR(arr, i) ((char*)((arr)->data) + (arr)->element_size * (i))
 
 void arr_capacity(arr_handle handle, int32_t capacity) {
     if(capacity == handle->max_count)
         return;
 
-    handle = OS_REALLOC(handle, sizeof(arr_data) + handle->element_size * capacity);
+    handle = OS_REALLOC(handle->data, sizeof(struct arr_data) + handle->element_size * capacity);
+    handle->data = handle + 1;
     handle->max_count = capacity;
 
     if(handle->cur_count > handle->max_count)
         handle->cur_count = handle->max_count;
+    else
+        memset(arr_get(handle, handle->cur_count), 0, handle->element_size * (capacity - handle->cur_count));
 
     CORE_ASSERT(handle != 0 && "Could not reallocate array");
 }
 
 arr_handle arr_new(int32_t element_size, int32_t capacity) {
-    arr_handle arr = OS_MALLOC(sizeof(arr_data) + (element_size * capacity));
+    arr_handle arr = OS_MALLOC(sizeof(arr_data) + element_size * capacity);
+    arr->data = arr + 1;
     arr->element_size = element_size;
     arr->cur_count = 0;
     arr->max_count = capacity;
+    memset(arr->data, 0, element_size * capacity);
     return arr;
 }
 
@@ -118,8 +118,9 @@ void arr_add_range(arr_handle handle, void * *element, int32_t length) {
 }
 
 void arr_resize(arr_handle handle, int32_t length) {
-    if(length > handle->max_count)
+    if(length > handle->max_count){
         arr_capacity(handle, length);
+    }
     handle->cur_count = length;
 }
 
