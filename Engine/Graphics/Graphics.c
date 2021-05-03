@@ -11,6 +11,7 @@
 #include <Os/Log.h>
 #include <Os/Allocator.h>
 #include <Os/Platform.h>
+#include <Containers/Array.h>
 
 typedef struct gfx_shader{
     int32_t id;
@@ -22,6 +23,7 @@ typedef struct gfx_buffer{
 } gfx_buffer;
 
 typedef struct gfx_pipeline{
+    bool smooth_model;
     gfx_shader_handle shader;
     uint32_t vao_id;
     uint32_t ebo_id;
@@ -41,8 +43,14 @@ typedef struct gfx_framebuffer{
     uint32_t id;
 } gfx_framebuffer;
 
-uint32_t draw_calls_count_current_pass;
-uint32_t draw_calls_count_previous_pass;
+
+typedef struct gfx_draw_pass{
+    gfx_pass_desc desc;
+    int32_t draw_calls;
+} gfx_draw_pass;
+
+arr_handle draw_passes_arr;
+int32_t total_draw_calls;
 
 void
 #ifdef __MINGW32__
@@ -86,11 +94,14 @@ bool gfx_init() {
 
     LOG_INFO("Graphics initialized\n");
     LOG_INFO("%s %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER));
+    draw_passes_arr = arr_new(sizeof(struct gfx_draw_pass), 0);
+    total_draw_calls = 0;
+
     return true;
 }
 
 void gfx_terminate(){
-
+    arr_delete(draw_passes_arr);
 }
 
 
@@ -135,14 +146,14 @@ uint32_t gl_get_buffer_type(gfx_buffer_type type) {
     }
 }
 
-void gl_print_shader_err(int32_t shader)
+void gl_print_shader_err(int32_t shader, char const* name)
 {
     GLint maxLength = 0;
     char* buffer;
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &maxLength);
     buffer = OS_MALLOC(maxLength);
     glGetShaderInfoLog(shader, maxLength, &maxLength, buffer);
-    LOG_ERROR("Shader compilation error: \n%s", buffer);
+    LOG_ERROR("Shader %s compilation error: \n%s", name, buffer);
     OS_FREE(buffer);
 }
 
@@ -175,8 +186,7 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
         glAttachShader(shader->id, vs);
     }
     else {
-        gl_print_shader_err(vs);
-        LOG_ERROR("Shader %s\n", desc->vs.src);
+        gl_print_shader_err(vs, desc->name);
     }
     compiled = 0;
     uint32_t fs = glCreateShader(GL_FRAGMENT_SHADER);
@@ -186,8 +196,7 @@ gfx_shader_handle gfx_shader_create(const gfx_shader_desc *desc) {
     if (compiled)
         glAttachShader(shader->id, fs);
     else {
-        gl_print_shader_err(fs);
-        LOG_ERROR("Shader %s\n", desc->vs.src);
+        gl_print_shader_err(fs, desc->name);
     }
 
     compiled = 0;
@@ -208,8 +217,6 @@ void gfx_shader_destroy(gfx_shader_handle shader) {
     glDeleteProgram(shader->id);
     OS_FREE(shader);
 }
-
-
 
 gfx_buffer_handle gfx_buffer_create(const gfx_buffer_desc * desc) {
 
@@ -242,20 +249,30 @@ void gfx_buffer_update(gfx_buffer_handle buffer, const gfx_buffer_desc * desc) {
     glBufferSubData(gl_get_buffer_type(desc->type), 0, desc->size, desc->data);
 }
 
+void gfx_draw(gfx_draw_type type, int32_t start, int32_t length) {
+    int32_t size = arr_size(draw_passes_arr);
+    if (size == 0) {
+        LOG_ERROR("Draw pass is not active\n");
+        return;
+    }
 
-void gfx_draw(gfx_draw_type type, int32_t start, int32_t length)
-{
+    gfx_draw_pass *pass = arr_get(draw_passes_arr, size - 1);
     glDrawArrays(type, start, length);
-    draw_calls_count_current_pass++;
+    pass->draw_calls++;
 }
 
 void gfx_draw_id(gfx_draw_type type, int32_t length)
 {
+    int32_t size = arr_size(draw_passes_arr);
+    if (size == 0) {
+        LOG_ERROR("Draw pass is not active\n");
+        return;
+    }
+
+    gfx_draw_pass *pass = arr_get(draw_passes_arr, size - 1);
     glDrawElements(type, length, GL_UNSIGNED_INT, 0);
-    draw_calls_count_current_pass++;
+    pass->draw_calls++;
 }
-
-
 
 gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
 
@@ -273,6 +290,9 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
     for(int i=0; i < MAXIMUM_PIPELINE_ATTRIBUTES; ++i) {
         gfx_pipeline_attr p_attr = desc->attrs[i];
         if (p_attr.enabled) {
+            //assert whether specification matches shader specs
+            ASSERT(p_attr.element_size == desc->shader->attrs[i].size);
+            ASSERT(p_attr.elements_count == desc->shader->attrs[i].num_elements);
             ASSERT(p_attr.buffer != 0);
             ASSERT(p_attr.stride != 0);
             ASSERT(p_attr.offset < p_attr.stride);
@@ -287,8 +307,6 @@ gfx_pipeline_handle gfx_pipeline_create(const gfx_pipeline_desc *desc) {
             glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
     }
-
-
     glBindVertexArray(0);
     return pipeline;
 }
@@ -307,18 +325,17 @@ void gfx_pipeline_destroy(gfx_pipeline_handle hndl) {
     OS_FREE(hndl);
 }
 
-void gfx_begin_pass(const gfx_pass_desc * desc) {
+void gfx_enable_pass(const gfx_pass_desc * desc)
+{
 
     if(desc->fbo_handle != 0)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, desc->fbo_handle->id);
+
     }
     else{
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
-
-    draw_calls_count_previous_pass = draw_calls_count_current_pass;
-    draw_calls_count_current_pass = 0;
 
     uint32_t clear_flags = 0;
     if((desc->actions & GFX_PASS_ACTION_CLEAR_COLOR) != 0)
@@ -354,11 +371,32 @@ void gfx_begin_pass(const gfx_pass_desc * desc) {
     }
     else
         glDisable(GL_FRAMEBUFFER_SRGB);
-
 }
 
-void gfx_end_pass() {
+void gfx_begin_pass(const gfx_pass_desc * desc) {
 
+    gfx_draw_pass pass = {.desc = *desc, .draw_calls = 0};
+    arr_add(draw_passes_arr, &pass);
+    gfx_enable_pass(desc);
+}
+
+int32_t gfx_end_pass() {
+
+    if (arr_size(draw_passes_arr) == 0) {
+        LOG_ERROR("Tried to end non existing pass");
+        return 0;
+    }
+    struct gfx_draw_pass* dp = (gfx_draw_pass*)arr_get_last(draw_passes_arr );
+    arr_remove_last(draw_passes_arr);
+    if (arr_size(draw_passes_arr) != 0) {
+        struct gfx_draw_pass *np = (gfx_draw_pass *) arr_get_last(draw_passes_arr);
+        gfx_enable_pass(&(np->desc));
+    }
+    else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    return dp->draw_calls;
 }
 
 gfx_texture_handle gfx_texture_create(const gfx_texture_desc * desc) {
@@ -474,6 +512,9 @@ void gfx_texture_bind(gfx_texture_handle hndl, int32_t index) {
         glActiveTexture(GL_TEXTURE0 + index);
         glBindTexture(GL_TEXTURE_2D, hndl->id);
     }
+    else{
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 void gfx_texture_destroy(gfx_texture_handle hndl) {
@@ -482,7 +523,7 @@ void gfx_texture_destroy(gfx_texture_handle hndl) {
 }
 
 uint32_t gfx_draw_call_count_get() {
-    return draw_calls_count_previous_pass;
+    return total_draw_calls;
 }
 
 gfx_uniform gfx_uniform_register(gfx_shader_handle shader, const char *name, gfx_type type) {
@@ -561,6 +602,12 @@ gfx_framebuffer_handle gfx_framebuffer_create(struct gfx_framebuffer_desc *frame
         }
     }
 
+    if(color_attachments == 0)
+    {
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+    }
+
     if(framebuffer_desc->depth_stencil_attachment.enabled)
     {
         gfx_framebuffer_attachment* depth_stencil = &framebuffer_desc->depth_stencil_attachment;
@@ -605,8 +652,47 @@ gfx_texture_type gfx_texture_color_type_from_channels(int32_t channels, bool srg
 void gfx_framebuffer_destroy(gfx_framebuffer_handle buffer) {
     glDeleteFramebuffers(1, &buffer->id);
     LOG_INFO("Framebuffer destroyed\n");
+    OS_FREE(buffer);
 }
 
 void gfx_shader_bind(gfx_shader_handle shader) {
     glUseProgram(shader->id);
+}
+
+void gfx_reset_draw_call_count() {
+    total_draw_calls = 0;
+}
+
+void gfx_viewport_set(int32_t width, int32_t height) {
+    glViewport(0, 0, width, height);
+}
+
+gfx_texture_handle gfx_texture_create_color(const gfx_texture_desc *desc, gfx_color color) {
+
+    int32_t num_dims = -1;
+    switch (desc->type) {
+
+        case GFX_TEXTURE_TYPE_SRGB: num_dims = 3; break;
+        case GFX_TEXTURE_TYPE_SRGBA: num_dims = 4; break;
+        case GFX_TEXTURE_TYPE_RGB: num_dims = 3; break;
+        case GFX_TEXTURE_TYPE_RGBA: num_dims = 4; break;
+        case GFX_TEXTURE_TYPE_DEPTH:break;
+        case GFX_TEXTURE_TYPE_STENCIL:break;
+        case GFX_TEXTURE_TYPE_DEPTH_STENCIL:break;
+    }
+    if(num_dims == -1)
+    {
+        LOG_ERROR("Invalid texture format\n");
+        return 0;
+    }
+
+    for (int32_t i = 0; i < desc->width * desc->height; ++i) {
+        for (int32_t j = 0; j < num_dims; ++j) {
+            *(((unsigned char *)desc->data) + i + (desc->width * desc->height) * j) = (unsigned char) (
+                    *((float *) (&color) + j) * 255);
+        }
+    }
+
+    return gfx_texture_create(desc);
+
 }

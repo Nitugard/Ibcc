@@ -143,10 +143,14 @@ typedef struct mdl_data{
 
 } mdl_data;
 
+typedef struct mdl_desc{
+    const char* path;
+    bool load_textures;
+} mdl_desc;
+
 typedef struct mdl_data* mdl_handle;
 
-API void mdl_init();
-API void mdl_terminate();
-
+API mdl_handle mdl_load(mdl_desc* desc);
+API void mdl_unload(mdl_handle handle);
 
 #endif //MODEL_H

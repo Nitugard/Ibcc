@@ -5,18 +5,18 @@
 
 static const char vs_source[] = STRING(
         SHADER_VERSION
-        layout (location = ATTR_POSITION_LOCATION) in vec2 ATTR_POSITION_NAME;
-        layout (location = ATTR_UV_LOCATION) in vec2 ATTR_UV_NAME;
-        layout (location = ATTR_COLOR_LOCATION) in vec4 ATTR_COLOR_NAME;
+        layout (location = ATTR_POSITION_LOCATION) in vec2 VERTEX_POSITION;
+        layout (location = ATTR_UV_LOCATION) in vec2 VERTEX_UV;
+        layout (location = ATTR_COLOR_LOCATION) in vec4 VERTEX_COLOR;
 
-        uniform mat4 projection;
+        uniform mat4 PROJECTION;
+        out vec2 FRAGMENT_UV;
+        out vec4 FRAGMENT_COLOR;
 
-        out vec2 fATTR_UV_NAME;
-        out vec4 fATTR_COLOR_NAME;
         void main() {
-            gl_Position = projection * vec4(ATTR_POSITION_NAME, 0, 1.0);
-            fATTR_UV_NAME = ATTR_UV_NAME;
-            fATTR_COLOR_NAME = ATTR_COLOR_NAME;
+            gl_Position = PROJECTION * vec4(VERTEX_POSITION, 0, 1.0);
+            FRAGMENT_UV = VERTEX_UV;
+            FRAGMENT_COLOR = VERTEX_COLOR;
         }
 );
 
@@ -24,22 +24,22 @@ static const char fs_source[] = STRING(
         SHADER_VERSION
         out vec4 FragColor;
 
-        uniform sampler2D COLOR_TEXTURE_NAME;
-        in vec2 fATTR_UV_NAME;
-        in vec4 fATTR_COLOR_NAME;
+        uniform sampler2D TEXTURE_MAIN;
+        in vec2 FRAGMENT_UV;
+        in vec4 FRAGMENT_COLOR;
 
         float near = 0.1;
         float far  = 100.0;
 
-        float LinearizeDepth(float depth)
+        float lin_depth(float depth)
         {
             float z = depth * 2.0 - 1.0;
             return (2.0 * near * far) / (far + near - z * (far - near));
         }
 
         void main() {
-            vec4 tex = texture(COLOR_TEXTURE_NAME, fATTR_UV_NAME);
-            float depth = LinearizeDepth(tex.r) / far;
+            vec4 tex = texture(TEXTURE_MAIN, FRAGMENT_UV);
+            float depth = lin_depth(tex.r) / far;
             FragColor = vec4(vec3(depth), 1.0);
         }
 );

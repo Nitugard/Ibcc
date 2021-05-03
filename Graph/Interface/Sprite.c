@@ -17,19 +17,21 @@
 
 #include <stddef.h>
 
+#define MAXIMUM_VERTICES 6
+
 typedef struct sprite_vertex{
     gl_vec2 pos;
     gl_vec2 uv;
-    gl_vec4 color;
 } sprite_vertex;
 
 typedef struct sprite_quad{
-    sprite_vertex vertices[6];
+    sprite_vertex vertices[MAXIMUM_VERTICES];
 } sprite_quad;
 
 typedef struct sprite_data{
     sprite_desc desc;
     gl_mat projection;
+    int32_t vertices;
 } sprite_data;
 
 
@@ -72,20 +74,18 @@ void sprite_init(int32_t capacity) {
                             .enabled = true,
                             .buffer = manager.vbo,
                             .stride = sizeof(struct sprite_vertex),
-                            .offset = offsetof(sprite_vertex, pos)
+                            .offset = offsetof(sprite_vertex, pos),
+                            .elements_count = 2,
+                            .element_size = sizeof(float)
                     },
                     [ATTR_UV_LOCATION] = {
                             .enabled = true,
                             .buffer = manager.vbo,
                             .stride = sizeof(struct sprite_vertex),
-                            .offset = offsetof(sprite_vertex, uv)
+                            .offset = offsetof(sprite_vertex, uv),
+                            .elements_count = 2,
+                            .element_size = sizeof(float)
                     },
-                    [ATTR_COLOR_LOCATION] = {
-                            .enabled = true,
-                            .buffer = manager.vbo,
-                            .stride = sizeof(struct sprite_vertex),
-                            .offset = offsetof(sprite_vertex, color)
-                    }
 
             }
     };
@@ -115,10 +115,10 @@ sprite_handle sprite_new(sprite_desc desc) {
 
     sprite_data temp_data = {0};
     arr_add(manager.sprites_arr, &temp_data);
-    sprite_vertex v0 = {.pos = {.x = 0, .y = 0}, .uv = {.x = 0, .y = 0}, .color = {}};
-    sprite_vertex v1 = {.pos = {.x = desc.width, .y = 0}, .uv = {.x = 1, .y = 0}, .color = {}};
-    sprite_vertex v2 = {.pos = {.x = 0, .y = desc.height}, .uv = {.x = 0, .y = 1}, .color = {}};
-    sprite_vertex v3 = {.pos = {.x = desc.width, .y = desc.height}, .uv = {.x = 1, .y = 1}, .color = {}};
+    sprite_vertex v0 = {.pos = {.x = 0, .y = 0}, .uv = {.x = 0, .y = 0}};
+    sprite_vertex v1 = {.pos = {.x = desc.width, .y = 0}, .uv = {.x = 1, .y = 0}};
+    sprite_vertex v2 = {.pos = {.x = 0, .y = desc.height}, .uv = {.x = 0, .y = 1}};
+    sprite_vertex v3 = {.pos = {.x = desc.width, .y = desc.height}, .uv = {.x = 1, .y = 1}};
 
     sprite_quad quad = {
             .vertices = {v0, v1, v3, v0, v3, v2}
@@ -133,7 +133,7 @@ sprite_handle sprite_new(sprite_desc desc) {
             .size = sizeof(struct sprite_quad) * manager.capacity,
             .data = manager.data,
     };
-
+    data->vertices = 6;
     gfx_buffer_update(manager.vbo, &vbo_desc);
     return data;
 }
@@ -178,8 +178,40 @@ void sprite_draw() {
         gfx_uniform_set(manager.projection_uniform, data->projection.data);
         if(data->desc.gfx_texture_handle != 0)
             gfx_texture_bind(data->desc.gfx_texture_handle, 0);
-        gfx_draw(GFX_TRIANGLES, i * 6, 6);
+        gfx_draw(GFX_TRIANGLES, i * 6, data->vertices);
     }
+}
+
+sprite_handle sprite_new_triangle(struct sprite_desc desc) {
+    if (arr_full(manager.sprites_arr)) {
+        LOG_ERROR("Sprites array is full\n");
+        return 0;
+    }
+
+    sprite_data temp_data = {0};
+    arr_add(manager.sprites_arr, &temp_data);
+    sprite_vertex v0 = {.pos = {.x = 0, .y = 0}, .uv = {.x = 0, .y = 0}};
+    sprite_vertex v1 = {.pos = {.x = desc.width, .y = 0}, .uv = {.x = 1, .y = 0} };
+    sprite_vertex v2 = {.pos = {.x = 0, .y = desc.height}, .uv = {.x = 0, .y = 1}};
+
+    sprite_quad tris = {
+            .vertices = {v0, v1, v2}
+    };
+    int32_t index = arr_size(manager.sprites_arr) - 1;
+    os_memcpy((char *) manager.data + index * sizeof(struct sprite_quad), tris.vertices, sizeof(struct sprite_quad));
+    sprite_data *data = arr_get(manager.sprites_arr, index);
+    data->vertices = 3;
+    sprite_update(data, desc);
+    gfx_buffer_desc vbo_desc = {
+            .update_mode = GFX_BUFFER_UPDATE_DYNAMIC_DRAW,
+            .type = GFX_BUFFER_VERTEX,
+            .size = sizeof(struct sprite_quad) * manager.capacity,
+            .data = manager.data,
+    };
+
+    gfx_buffer_update(manager.vbo, &vbo_desc);
+    return data;
+
 }
 
 

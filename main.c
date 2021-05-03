@@ -4,12 +4,14 @@
 #include "Graphics/Graphics.h"
 #include <Interface/Text.h>
 #include <Model/Model.h>
-#include <Asset/Asset.h>
 #include <Scene/Scene.h>
 #include <Draw/Draw.h>
 #include <Interface/Sprite.h>
 #include <Shaders/DepthShader.h>
 
+/*
+ * Resources.
+ */
 scene_handle active_scene;
 
 void escape()
@@ -36,7 +38,7 @@ int main()
             .height = 720,
             .width = 1280,
             .name = "Device",
-            .fullscreen = true,
+            .fullscreen = false,
             .msaa = 0,
     };
 
@@ -51,9 +53,9 @@ int main()
     int32_t width, height;
     device_window_dimensions_get(&width, &height);
 
-    asset_init();
     gfx_init();
-    mdl_init();
+    text_init();
+
     sprite_init(8);
 
     gfx_texture_desc tex_desc = {
@@ -79,8 +81,8 @@ int main()
     gfx_framebuffer_desc fbo_desc = {
             .color_attachments = {
                     {
-                        .enabled = true,
-                        .texture_handle = fbo_color_texture,
+                            .enabled = true,
+                            .texture_handle = fbo_color_texture,
                     }
             },
             .depth_stencil_attachment = {
@@ -88,8 +90,10 @@ int main()
                     .enabled = true,
             }
     };
-    gfx_framebuffer_handle fbo_handle = gfx_framebuffer_create(&fbo_desc);
 
+
+
+    gfx_framebuffer_handle fbo_handle = gfx_framebuffer_create(&fbo_desc);
 
     gfx_pass_desc pass_desc = {
             .pass_options = GFX_PASS_OPTION_DEPTH_TEST | GFX_PASS_OPTION_CULL_BACK,
@@ -105,60 +109,78 @@ int main()
             .clear_color = {0, 0, 0, 1}
     };
 
+    mdl_desc sponza_mdl_desc = {
+            .path = "./Data/sponza_tex.gltf",
+            .load_textures = false
+    };
+
+    scene_desc s_desc = {
+            .model = mdl_load(&sponza_mdl_desc),
+            .enable_shadows = true,
+            .lighting = SCENE_DEFAULT_LIGHTING,
+            .sun = SCENE_DEFAULT_SUN,
+    };
+    active_scene = scene_new(&s_desc);
+    mdl_unload(s_desc.model);
     gfx_shader_handle depth_shader = gfx_shader_create(&sprite_shader_desc);
-
-
-    text_init();
-    text_handle lbl1 = text_new(50); text_update(lbl1, width-350, 15, 1, "Dragutin Sredojevic");
-    text_handle fps = text_new(50);
-    text_handle memory = text_new(50);
-    mdl_handle mdl_handle = (struct mdl_data *) asset_load("./Data/sponza_tex_single.gltf");
-    scene_lighting_settings lighting_settings = SCENE_DEFAULT_LIGHTING;
-    scene_sun_settings sun_settings = SCENE_DEFAULT_SUN;
-
-    active_scene = scene_new(mdl_handle, sun_settings, lighting_settings);
-    asset_unload((asset_hndl) mdl_handle);
-    char fps_buf[50];
-    dw_desc desc = {};
-    dw_handle dw = dw_new(&desc);
-
     sprite_desc fb1 = {.gfx_texture_handle = fbo_color_texture, .width = width, .height = height, .scale= 1, .offset_y = 0, .offset_x = 0};
-    sprite_desc fb2 = {.gfx_texture_handle = depth_color_texture, .width = 300, .height = 200, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
+    sprite_desc fb2 = {.gfx_texture_handle = scene_get_lighting_depth_texture(active_scene), .width = 300, .height = 200, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
     sprite_new(fb1);
     sprite_new(fb2);
 
+    dw_desc desc = {};
+    dw_handle dw = dw_new(&desc, 100);
     dw_grid(dw, 10);
     dw_apply(dw);
 
+    char text_buffer[100];
+    text_handle fps_text = text_new(100);
+    text_handle alloc_text = text_new(100);
+    text_desc fps_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 30, .scale = 1};
+    text_desc alloc_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 60, .scale = 1};
+
+    scene_camera_projection scene_mvp;
     while(device_window_valid()) {
 
         device_update_events();
+        gfx_reset_draw_call_count();
 
-
+        //First pass
         gfx_begin_pass(&pass_desc);
-
         scene_draw(active_scene);
-        scene_camera_projection projection = scene_camera_projection_get();
-        dw_draw(dw, projection.projection, projection.view);
+        scene_mvp = scene_camera_projection_get();
+
+        sprintf(text_buffer, "Draw Calls: %i Fps: %i", gfx_draw_call_count_get(), (int)(1.0 / device_dt_get()));
+        text_update(fps_text, &fps_text_desc);
+        sprintf(text_buffer, "Heap count: %i Heap size: %i", os_get_tracked_allocations_length(), (int)(os_get_tracked_allocations_size()));
+        text_update(alloc_text, &alloc_text_desc);
+        gfx_end_pass();
+
+        //Second pass
         gfx_begin_pass(&default_pass);
-        sprintf(fps_buf, "Instances: %i Fps: %i", gfx_draw_call_count_get(), (int)(1.0 /device_dt_get()));
-        text_update(fps, 0, height-30, 1, fps_buf);
-        sprintf(fps_buf, "Heap allocations: %i Heap alloc size: %i", os_get_tracked_allocations_length(), os_get_tracked_allocations_size());
-        text_update(memory, 0, height-60, 1, fps_buf);
+        dw_draw(dw, scene_mvp.projection, scene_mvp.view);
         sprite_draw();
-        text_draw_screen(fps);
-        text_draw_screen(memory);
-        text_draw_screen(lbl1);
+        text_draw(fps_text);
+        text_draw(alloc_text);
+        gfx_end_pass();
+
+        //Swap buffers
         device_refresh();
 
     }
-    text_delete(memory);
-    text_delete(fps);
-    text_delete(lbl1);
+
+    text_delete(fps_text);
+    text_delete(alloc_text);
+
+    gfx_framebuffer_destroy(fbo_handle);
+    gfx_shader_destroy(depth_shader);
+    gfx_texture_destroy(fbo_color_texture);
+    gfx_texture_destroy(depth_color_texture);
+
     text_terminate();
     dw_delete(dw);
+    sprite_terminate();
     gfx_terminate();
-    asset_terminate();
     scene_delete(active_scene);
     device_delete(handle);
     device_terminate();

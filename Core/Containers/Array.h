@@ -125,6 +125,13 @@ API int32_t arr_max_size(arr_handle handle);
  */
 API void *arr_get(arr_handle handle, int32_t index);
 
+
+/*
+ * Returns last element memory from the array.
+ * Otherwise returns null.
+ */
+API void* arr_get_last(arr_handle handle);
+
 /*!
  * Overwrites element at given index in the array by overwriting memory.
  * Index is zero based.

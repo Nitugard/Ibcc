@@ -4,15 +4,20 @@
 
 static const char vs_source[] = STRING(
     SHADER_VERSION
-    layout (location = ATTR_POSITION_LOCATION) in vec3 v_pos;
-    layout (location = ATTR_COLOR_LOCATION) in vec3 v_color;
+    layout (location = ATTR_POSITION_LOCATION) in vec3 VERTEX_POSITION;
+    layout (location = ATTR_COLOR_LOCATION) in vec3 VERTEX_COLOR;
 
-        SHADER_MVP
+    uniform mat4 PROJECTION;
+    uniform mat4 VIEW;
 
-    out vec3 _color;
+    out vec3 FRAGMENT_POSITION;
+    out vec2 FRAGMENT_UV;
+    out vec3 FRAGMENT_NORMAL;
+
+    out vec3 FRAGMENT_COLOR;
     void main() {
-        gl_Position = projection * view * vec4(v_pos, 1.0);
-        _color = v_color;
+        gl_Position = PROJECTION * VIEW * vec4(v_pos, 1.0);
+        FRAGMENT_COLOR = VERTEX_COLOR;
     }
 );
 
@@ -20,11 +25,11 @@ static const char fs_source[] = STRING(
     SHADER_VERSION
     out vec4 FragColor;
 
-    in vec3 _color;
+    in vec3 FRAGMENT_COLOR;
 
     void main()
     {
-        FragColor = vec4(_color,1);
+        FragColor = vec4(FRAGMENT_COLOR, 1);
     }
 );
 

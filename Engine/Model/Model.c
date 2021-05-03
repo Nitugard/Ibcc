@@ -7,7 +7,6 @@
 
 #include "Model.h"
 
-#include <Asset/Asset.h>
 #include <Os/Allocator.h>
 #include <Os/Log.h>
 #include <Os/File.h>
@@ -27,15 +26,15 @@
  * 4. No skinning
  * 5. ?
  */
-asset_hndl mdl_on_load(const char* path) {
 
+
+API mdl_handle mdl_load(mdl_desc* desc) {
     bool verbose = true;
 
     size_t size;
-    void *buffer = file_mmap(path, &size);
-    if(buffer == 0)
-    {
-        LOG_ERROR("File could not be read: %s\n", path);
+    void *buffer = file_mmap(desc->path, &size);
+    if (buffer == 0) {
+        LOG_ERROR("File could not be read: %s\n", desc->path);
         return 0;
     }
 
@@ -46,7 +45,7 @@ asset_hndl mdl_on_load(const char* path) {
         return 0;
     }
 
-    cgltf_load_buffers(&options, data, path);
+    cgltf_load_buffers(&options, data, desc->path);
 
     mdl_handle handle = OS_MALLOC(sizeof(mdl_data));
     os_memset(handle, 0, sizeof(mdl_data));
@@ -65,8 +64,7 @@ asset_hndl mdl_on_load(const char* path) {
     handle->nodes = OS_MALLOC(sizeof(struct mdl_node) * data->nodes_count);
     os_memset(handle->nodes, 0, sizeof(struct mdl_node) * data->nodes_count);
 
-    for(int32_t i=0; i<data->nodes_count; ++i)
-    {
+    for (int32_t i = 0; i < data->nodes_count; ++i) {
         cgltf_node *cnode = data->nodes + i;
         mdl_node *node = handle->nodes + i;
         node->mesh_index = node->light_index = node->camera_index = -1;
@@ -75,24 +73,22 @@ asset_hndl mdl_on_load(const char* path) {
         if (verbose) LOG_INFO("Loading node: %s\n", node->name);
 
 
-        if(cnode->has_matrix) {
+        if (cnode->has_matrix) {
             gl_mat local_mat = gl_mat_transpose(gl_mat_new_array(cnode->matrix));
             os_memcpy(node->tr_local, local_mat.data, sizeof(gl_mat));
-        }
-        else {
+        } else {
 
             gl_mat translate = GL_MAT_IDENTITY;
             gl_mat rotate = GL_MAT_IDENTITY;
             gl_mat scale = GL_MAT_IDENTITY;
 
-            if(cnode->has_translation) {
+            if (cnode->has_translation) {
                 translate = gl_mat_translate(gl_vec3_new_arr(cnode->translation));
             }
-            if(cnode->has_rotation) {
+            if (cnode->has_rotation) {
                 rotate = gl_mat_from_quaternion(gl_vec4_new_arr(cnode->rotation));
             }
-            if(cnode->has_scale)
-            {
+            if (cnode->has_scale) {
                 scale = gl_mat_scale(gl_vec3_new_arr(cnode->scale));
             }
             gl_mat trs = gl_mat_mul(translate, gl_mat_mul(rotate, scale));
@@ -102,7 +98,7 @@ asset_hndl mdl_on_load(const char* path) {
         //load children
         if (verbose) LOG_INFO("Children count: %i\n", cnode->children_count);
         node->children_count = cnode->children_count;
-        if(cnode->children_count > 0) {
+        if (cnode->children_count > 0) {
             node->children_id = OS_MALLOC(sizeof(uint32_t) * cnode->children_count);
             for (int32_t j = 0; j < cnode->children_count; ++j) {
                 cgltf_node *child_cnode = cnode->children[j];
@@ -125,19 +121,23 @@ asset_hndl mdl_on_load(const char* path) {
         node->parent_id = -1;
         for (int32_t k = 0; k < data->nodes_count; ++k) {
             if (data->nodes + k == cnode->parent) {
-                node->parent_id = k; break;
+                node->parent_id = k;
+                break;
             }
         }
 
-        if(cnode->mesh){
+        if (cnode->mesh) {
             int32_t mesh_index = -1;
-            for(int32_t j=0; j<data->meshes_count; ++j){
-                if(data->meshes+j == cnode->mesh) { mesh_index = j; break;}
+            for (int32_t j = 0; j < data->meshes_count; ++j) {
+                if (data->meshes + j == cnode->mesh) {
+                    mesh_index = j;
+                    break;
+                }
             }
-            if(mesh_index == -1) { LOG_ERROR("Node mesh index could not be found!"); }
-            else{
+            if (mesh_index == -1) { LOG_ERROR("Node mesh index could not be found!"); }
+            else {
                 node->mesh_index = mesh_index;
-                if(verbose) LOG_INFO("Node mesh: %s, index: %i\n", cnode->mesh->name, mesh_index);
+                if (verbose) LOG_INFO("Node mesh: %s, index: %i\n", cnode->mesh->name, mesh_index);
             }
         }
     }
@@ -156,13 +156,12 @@ asset_hndl mdl_on_load(const char* path) {
         cgltf_mesh *cmesh = data->meshes + i;
         mdl_mesh *mesh = handle->meshes + i;
 
-        if(cmesh->name != 0) {
+        if (cmesh->name != 0) {
             mesh->name = OS_MALLOC(strlen(cmesh->name) + 1);
             os_memcpy(mesh->name, cmesh->name, strlen(cmesh->name) + 1);
 
             if (verbose) LOG_INFO("Loading mesh: %s\n", mesh->name);
-        }
-        else {
+        } else {
             if (verbose) LOG_INFO("Loading unnamed mesh\n");
             mesh->name = 0;
         }
@@ -291,7 +290,7 @@ asset_hndl mdl_on_load(const char* path) {
 
             //associate material
             uint32_t material_id = -1;
-            if(cprimitive->material != 0) {
+            if (cprimitive->material != 0) {
                 for (uint32_t k = 0; k < data->materials_count; ++k) {
                     cgltf_material *mat = data->materials + k;
                     if (mat == cprimitive->material) {
@@ -320,7 +319,7 @@ asset_hndl mdl_on_load(const char* path) {
         mdl_material *mat = handle->materials + i;
         mat->valid = false;
 
-        if(cmat->name != 0) {
+        if (cmat->name != 0) {
             if (verbose) LOG_INFO("Loading material: %s\n", cmat->name);
 
             mat->name = OS_MALLOC(strlen(cmat->name) + 1);
@@ -330,26 +329,22 @@ asset_hndl mdl_on_load(const char* path) {
             mat->name = 0;
         }
 
-        if(cmat->has_pbr_metallic_roughness)
-        {
+        if (cmat->has_pbr_metallic_roughness) {
             mat->valid = true;
             mat->unlit = cmat->unlit;
-            mat->color_texture_id= -1;
+            mat->color_texture_id = -1;
 
             if (verbose) LOG_INFO("Material pbr roughness\n");
-            for(int32_t k=0; k<data->textures_count; ++k)
-            {
-                cgltf_texture* tex = data->textures + k;
-                if(tex == cmat->pbr_metallic_roughness.base_color_texture.texture)
-                {
+            for (int32_t k = 0; k < data->textures_count; ++k) {
+                cgltf_texture *tex = data->textures + k;
+                if (tex == cmat->pbr_metallic_roughness.base_color_texture.texture) {
                     mat->color_texture_id = k;
                     break;
                 }
             }
             os_memcpy(mat->color_factor, cmat->pbr_metallic_roughness.base_color_factor, sizeof(gl_vec4));
             mat->alpha_cutoff = cmat->alpha_cutoff;
-        }
-        else{
+        } else {
             //unsupported material
             if (verbose) LOG_INFO("Unsupported material\n");
         };
@@ -361,60 +356,67 @@ asset_hndl mdl_on_load(const char* path) {
     /*
      * Loading of the textures.
      */
-    handle->textures = OS_MALLOC(sizeof(struct mdl_texture) * data->textures_count);
-    handle->textures_count = data->textures_count;
-    os_memset(handle->textures, 0, sizeof(struct mdl_texture) * data->textures_count);
+    if(desc->load_textures) {
+        handle->textures_count = data->textures_count;
+        handle->textures = OS_MALLOC(sizeof(struct mdl_texture) * data->textures_count);
+        os_memset(handle->textures, 0, sizeof(struct mdl_texture) * data->textures_count);
 
-    if(verbose) LOG_INFO("Textures count %i\n", handle->textures_count);
+        if (verbose) LOG_INFO("Textures count %i\n", handle->textures_count);
 
-    for (int32_t i = 0; i < data->textures_count; ++i) {
+        for (int32_t i = 0; i < data->textures_count; ++i) {
 
-        cgltf_texture *ctex = data->textures + i;
-        mdl_texture *tex = handle->textures + i;
-        tex->valid = false;
-        cgltf_buffer_view *tex_buffer_view = ctex->image->buffer_view;
-        if (ctex->name != 0) {
-            if (verbose) LOG_INFO("Loading texture: %s\n", ctex->name);
+            cgltf_texture *ctex = data->textures + i;
+            mdl_texture *tex = handle->textures + i;
+            tex->valid = false;
+            cgltf_buffer_view *tex_buffer_view = ctex->image->buffer_view;
+            if (ctex->name != 0) {
+                if (verbose) LOG_INFO("Loading texture: %s\n", ctex->name);
 
-            tex->name = OS_MALLOC(strlen(ctex->name) + 1);
-            os_memcpy(tex->name, ctex->name, strlen(ctex->name) + 1);
-        } else {
-            if (verbose) LOG_INFO("Loading unnamed texture\n");
-            tex->name = 0;
+                tex->name = OS_MALLOC(strlen(ctex->name) + 1);
+                os_memcpy(tex->name, ctex->name, strlen(ctex->name) + 1);
+            } else {
+                if (verbose) LOG_INFO("Loading unnamed texture\n");
+                tex->name = 0;
+            }
+
+            assert(tex_buffer_view->buffer->data != 0);
+
+            int32_t width, height, channels;
+
+            unsigned char *ptr = (unsigned char *) tex_buffer_view->buffer->data + tex_buffer_view->offset;
+            if (stbi_is_16_bit_from_memory(ptr, tex_buffer_view->size)) {
+                LOG_INFO("Texture is 16 bit, currently not supported!\n");
+                continue;
+            }
+
+            unsigned char *loaded_data = stbi_load_from_memory(ptr, tex_buffer_view->size, &width, &height, &channels,
+                                                               0);
+            if (loaded_data == 0) {
+                LOG_ERROR("Failed to load texture!\n");
+                continue;
+            }
+            tex->valid = true;
+            tex->width = width;
+            tex->height = height;
+            tex->channels = channels;
+            tex->size = width * height * channels;
+            int32_t bsize = width * height * channels * sizeof(unsigned char);
+            tex->buffer = OS_MALLOC(bsize);
+            os_memcpy(tex->buffer, loaded_data, bsize);
+            stbi_image_free(loaded_data);
         }
-
-        assert(tex_buffer_view->buffer->data != 0);
-
-        int32_t width, height, channels;
-
-        unsigned char *ptr = (unsigned char *) tex_buffer_view->buffer->data + tex_buffer_view->offset;
-        if(stbi_is_16_bit_from_memory(ptr, tex_buffer_view->size)) {
-            LOG_INFO("Texture is 16 bit, currently not supported!\n");
-            continue;
-        }
-
-        unsigned char *loaded_data = stbi_load_from_memory(ptr, tex_buffer_view->size, &width, &height, &channels, 0);
-        if (loaded_data == 0) {LOG_ERROR("Failed to load texture!\n"); continue;}
-        tex->valid = true;
-        tex->width = width;
-        tex->height = height;
-        tex->channels = channels;
-        tex->size = width * height * channels;
-        int32_t bsize = width * height * channels * sizeof(unsigned char) ;
-        tex->buffer = OS_MALLOC(bsize);
-        os_memcpy(tex->buffer, loaded_data, bsize);
-        stbi_image_free(loaded_data);
+    }
+    else{
+        handle->textures_count = 0;
+        handle->textures = 0;
     }
 
-
     cgltf_free(data);
-    return (asset_hndl) handle;
+    return handle;
 }
 
+void mdl_unload(mdl_handle data) {
 
-void mdl_on_unload(asset_hndl hndl)
-{
-    mdl_data* data = (mdl_data *) hndl;
     for(int32_t i=0; i<data->nodes_count; ++i)
     {
         mdl_node* node = data->nodes + i;
@@ -457,19 +459,5 @@ void mdl_on_unload(asset_hndl hndl)
     OS_FREE(data->textures);
     OS_FREE(data->name);
 
-    OS_FREE(hndl);
-}
-
-void mdl_init() {
-    asset_register_desc mdl_desc = {
-            .extension = "gltf",
-            .asset_on_load=mdl_on_load,
-            .asset_on_unload=mdl_on_unload,
-    };
-
-    asset_register(&mdl_desc);
-}
-
-void mdl_terminate() {
-
+    OS_FREE(data);
 }

@@ -127,7 +127,6 @@ typedef struct gfx_color{
 typedef struct gfx_shader_attr {
     int32_t size;
     int32_t num_elements;
-    char* name; //nesto nije y redu
 } gfx_shader_attr;
 
 typedef struct gfx_pipeline_attr {
@@ -135,6 +134,8 @@ typedef struct gfx_pipeline_attr {
     int32_t offset;
     int32_t stride;
     gfx_buffer_handle buffer;
+    int32_t elements_count;
+    int32_t element_size;
 } gfx_pipeline_attr;
 
 typedef struct gfx_shader_stage {
@@ -221,20 +222,24 @@ API void gfx_buffer_update(gfx_buffer_handle, gfx_buffer_desc const * buffer);
 API void gfx_buffer_destroy(gfx_buffer_handle buffer);
 
 API gfx_texture_handle gfx_texture_create(gfx_texture_desc const* texture_desc);
+API gfx_texture_handle gfx_texture_create_color(gfx_texture_desc const* desc, gfx_color color);
 API gfx_texture_type gfx_texture_color_type_from_channels(int32_t channels, bool srgb);
 API void gfx_texture_bind(gfx_texture_handle texture, int32_t index);
 API void gfx_texture_destroy(gfx_texture_handle texture);
 
 API void gfx_begin_pass(gfx_pass_desc const* desc);
-API void gfx_end_pass();
+API int32_t gfx_end_pass();
 
 API void gfx_draw(gfx_draw_type type, int32_t start, int32_t length);
 API void gfx_draw_id(gfx_draw_type type, int32_t length);
 
+API void gfx_reset_draw_call_count();
 API uint32_t gfx_draw_call_count_get();
 
 API void gfx_blend(gfx_blend_type src, gfx_blend_type dest);
 API void gfx_blend_enable(bool state);
+
+API void gfx_viewport_set(int32_t width, int32_t height);
 
 API gfx_pipeline_handle gfx_pipeline_create(gfx_pipeline_desc const * pipeline_desc);
 API void gfx_pipeline_bind(gfx_pipeline_handle pipeline);

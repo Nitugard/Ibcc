@@ -26,21 +26,20 @@ void arr_capacity(arr_handle handle, int32_t capacity) {
     if(capacity == handle->max_count)
         return;
 
-    handle = OS_REALLOC(handle->data, sizeof(struct arr_data) + handle->element_size * capacity);
-    handle->data = handle + 1;
+    handle->data = OS_REALLOC(handle->data, handle->element_size * capacity);
     handle->max_count = capacity;
 
     if(handle->cur_count > handle->max_count)
         handle->cur_count = handle->max_count;
     else
-        memset(arr_get(handle, handle->cur_count), 0, handle->element_size * (capacity - handle->cur_count));
+        memset(arr_get(handle, handle->cur_count), 0, handle->element_size * (handle->max_count - handle->cur_count));
 
     CORE_ASSERT(handle != 0 && "Could not reallocate array");
 }
 
 arr_handle arr_new(int32_t element_size, int32_t capacity) {
-    arr_handle arr = OS_MALLOC(sizeof(arr_data) + element_size * capacity);
-    arr->data = arr + 1;
+    arr_handle arr = OS_MALLOC(sizeof(arr_data));
+    arr->data = OS_MALLOC(element_size * capacity);
     arr->element_size = element_size;
     arr->cur_count = 0;
     arr->max_count = capacity;
@@ -72,12 +71,18 @@ void * arr_get(arr_handle arr, int32_t index) {
     return PTR(arr, index);
 }
 
+API void* arr_get_last(arr_handle handle) {
+    if (arr_empty(handle)) return 0;
+    return PTR(handle, arr_size(handle) - 1);
+}
+
 void arr_set(arr_handle arr, int32_t index, void * e) {
     CORE_ASSERT(index >= 0 && index < arr->cur_count);
     memcpy(PTR(arr, index), e, arr->element_size);
 }
 
 void arr_delete(arr_handle handle) {
+    OS_FREE(handle->data);
     OS_FREE(handle);
 }
 

@@ -4,15 +4,15 @@
 
 static const char vs_source[] = STRING(
     SHADER_VERSION
-    layout (location = ATTR_POSITION_LOCATION) in vec2 v_pos;
-    layout (location = ATTR_UV_LOCATION) in vec2 v_uv;
+    layout (location = ATTR_POSITION_LOCATION) in vec2 VERTEX_POSITION;
+    layout (location = ATTR_UV_LOCATION) in vec2 VERTEX_UV;
 
-    uniform mat4 model;
+    uniform mat4 MODEL;
+    out vec2 FRAGMENT_UV;
 
-    out vec2 _uv;
     void main() {
-        gl_Position = model * vec4(v_pos.x, v_pos.y, 0, 1.0);
-        _uv = v_uv;
+        gl_Position = MODEL * vec4(VERTEX_POSITION, 0, 1.0);
+        FRAGMENT_UV = VERTEX_UV;
     }
 );
 
@@ -20,12 +20,12 @@ static const char fs_source[] = STRING(
     SHADER_VERSION
     out vec4 FragColor;
 
-    uniform sampler2D font_tex;
-    in vec2 _uv;
+    uniform sampler2D TEXTURE_MAIN;
+    in vec2 FRAGMENT_UV;
 
 
     void main() {
-        vec4 tex = texture(font_tex, _uv);
+        vec4 tex = texture(TEXTURE_MAIN, FRAGMENT_UV);
         FragColor = tex;
     }
 );

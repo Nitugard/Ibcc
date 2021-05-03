@@ -16,19 +16,29 @@
 #define ATTR_WEIGHTS_LOCATION 5
 #define ATTR_JOINTS_LOCATION 6
 
-#define COLOR_TEXTURE_NAME color_texture
-#define ATTR_POSITION_NAME v_pos
-#define ATTR_UV_NAME v_uv
-#define ATTR_COLOR_NAME v_color
-#define ATTR_NORMAL_NAME v_normal
+#define TEXTURE_MAIN color_texture
+#define PROJECTION projection
+#define MODEL model
+#define VIEW view
+
+#define VERTEX_POSITION v_pos
+#define VERTEX_UV v_uv
+#define VERTEX_COLOR v_color
+#define VERTEX_NORMAL v_normal
+
+#define FRAGMENT_POSITION f_pos
+#define FRAGMENT_UV f_uv
+#define FRAGMENT_COLOR f_color
+#define FRAGMENT_NORMAL f_normal
+
+#define SUN_DIRECTION sun_direction
+#define SUN_COLOR sun_color
+#define ENABLE_SHADOWS enable_shadows
+
+#define AMBIENT_COLOR ambient_color
+#define DIFFUSE_COLOR diffuse_color
 
 #define SHADER_VERSION #version 330\n
-
-#define SHADER_MVP \
-    uniform mat4 model;\
-    uniform mat4 view;\
-    uniform mat4 projection;\
-
 
 #define __STRING(x) #x
 #define STRING(x) __STRING(x)

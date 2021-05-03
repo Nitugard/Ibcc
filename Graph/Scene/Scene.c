@@ -16,6 +16,9 @@
 #include <string.h>
 #include <Draw/Draw.h>
 
+
+#define SCENE_DRAW_DEBUG_VERTEX_CAPACITY 16534
+
 typedef struct scene_node {
     char* name;
     gl_mat local_tr;
@@ -40,18 +43,15 @@ typedef struct scene_material{
     gfx_uniform projection_uniform;
     gfx_uniform view_uniform;
 
-    gfx_uniform ambient_color;
-    gfx_uniform ambient_intensity;
 
     gfx_uniform sun_color;
     gfx_uniform sun_direction;
-    gfx_uniform sun_intensity;
 
-    gfx_uniform color_texture;
-    gfx_uniform color_factor_uniform;
-
+    gfx_uniform diffuse_color;
+    gfx_uniform ambient_color;
 
 
+    gfx_uniform enable_shadows;
 } scene_material;
 
 typedef struct scene_mesh_primitive{
@@ -98,10 +98,16 @@ typedef struct scene_data{
     bool wireframe;
     bool bounding_box;
     dw_handle dw;
+    gfx_texture_handle default_texture;
+
 
     scene_lighting_settings lighting_settings;
     scene_sun_settings sun_settings;
 
+    bool enable_shadows;
+    gfx_texture_handle shadow_depth_tex;
+    gfx_pass_desc shadow_pass;
+    gfx_framebuffer_handle fbo;
 } scene_data;
 
 
@@ -159,6 +165,8 @@ scene_mesh_primitive scene_new_primitive(gfx_shader_handle shader, mdl_primitive
             attr->offset = primitive.attributes[i].offset;
             attr->stride = primitive.vertex_stride;
             attr->enabled = true;
+            attr->element_size = primitive.attributes[i].element_size;
+            attr->elements_count = primitive.attributes[i].count;
         }
     }
 
@@ -201,28 +209,28 @@ scene_mesh_primitive scene_new_primitive(gfx_shader_handle shader, mdl_primitive
     return result;
 }
 
-scene_handle scene_new(void* model_ptr, struct scene_sun_settings sun_settings, struct scene_lighting_settings lighting_settings) {
+scene_handle scene_new(scene_desc const* desc) {
     os_memset(&controller_data, 0, sizeof(controller_camera_data));
 
     int32_t width, height;
     device_window_dimensions_get(&width, &height);
 
     controller_data.pos = gl_vec3_new(0,1,-10);
-    controller_data.projection = gl_mat_perspective(75, (float)width / height, 0.01, 100);
+    controller_data.projection = gl_mat_perspective(80, (float)width / height, 0.01, 100);
 
-    mdl_data* model = model_ptr;
+    mdl_data* model = desc->model;
     gfx_shader_handle sh_handle = gfx_shader_create(&lit_shader_desc);
 
     scene_handle handle = OS_MALLOC(sizeof(struct scene_data));
     os_memset(handle, 0, sizeof(scene_data));
 
-    dw_desc desc = {};
+    dw_desc dw_description = {};
 
     handle->shader = sh_handle;
-    handle->dw = dw_new(&desc);
-    handle->sun_settings = sun_settings;
-    handle->lighting_settings = lighting_settings;
-
+    handle->dw = dw_new(&dw_description, SCENE_DRAW_DEBUG_VERTEX_CAPACITY);
+    handle->sun_settings = desc->sun;
+    handle->lighting_settings = desc->lighting;
+    handle->enable_shadows = desc->enable_shadows;
     /*
      * Loading of the meshes.
      */
@@ -279,18 +287,16 @@ scene_handle scene_new(void* model_ptr, struct scene_sun_settings sun_settings, 
         struct mdl_material *m_mat = model->materials + i;
         os_memcpy(&(mat->base), m_mat, sizeof(struct mdl_material));
 
-        mat->model_uniform = gfx_uniform_register(handle->shader, "model", GFX_MAT4);
-        mat->projection_uniform = gfx_uniform_register(handle->shader, "projection", GFX_MAT4);
-        mat->view_uniform = gfx_uniform_register(handle->shader, "view", GFX_MAT4);
+        mat->model_uniform = gfx_uniform_register(handle->shader, STRING(MODEL), GFX_MAT4);
+        mat->projection_uniform = gfx_uniform_register(handle->shader, STRING(PROJECTION), GFX_MAT4);
+        mat->view_uniform = gfx_uniform_register(handle->shader, STRING(VIEW), GFX_MAT4);
 
-        mat->color_factor_uniform = gfx_uniform_register(handle->shader, "colorFactor", GFX_FLOAT4);
+        mat->diffuse_color = gfx_uniform_register(handle->shader, STRING(DIFFUSE_COLOR), GFX_FLOAT3);
+        mat->ambient_color = gfx_uniform_register(handle->shader, STRING(AMBIENT_COLOR), GFX_FLOAT3);
+        mat->sun_direction = gfx_uniform_register(handle->shader, STRING(SUN_DIRECTION), GFX_FLOAT3);
+        mat->sun_color = gfx_uniform_register(handle->shader, STRING(SUN_COLOR), GFX_FLOAT3);
+        mat->enable_shadows = gfx_uniform_register(handle->shader, STRING(ENABLE_SHADOWS), GFX_INT1);
 
-        mat->ambient_color = gfx_uniform_register(handle->shader, "ambientColor", GFX_FLOAT3);
-        mat->ambient_intensity = gfx_uniform_register(handle->shader, "ambientIntensity", GFX_FLOAT1);
-
-        mat->sun_color = gfx_uniform_register(handle->shader, "sunColor", GFX_FLOAT3);
-        mat->sun_direction = gfx_uniform_register(handle->shader, "sunDirection", GFX_FLOAT3);
-        mat->sun_intensity = gfx_uniform_register(handle->shader, "sunIntensity", GFX_FLOAT3);
     }
 
     /*
@@ -318,6 +324,52 @@ scene_handle scene_new(void* model_ptr, struct scene_sun_settings sun_settings, 
             tex->texture_handle = 0;
         }
     }
+
+    /*
+     * Create a shadow pass if necessary.
+     */
+    if(desc->enable_shadows)
+    {
+        struct gfx_texture_desc depth_tex = {
+                .wrap = GFX_TEXTURE_WRAP_CLAMP,
+                .mipmaps = false,
+                .type = GFX_TEXTURE_TYPE_DEPTH,
+                .width = 1280,
+                .height = 720,
+                .data = 0,
+                .filter = GFX_TEXTURE_FILTER_NEAREST
+        };
+
+        gfx_texture_handle depth_tex_handle = gfx_texture_create(&depth_tex);
+
+        gfx_framebuffer_desc fbo_desc = {
+                .depth_stencil_attachment = {.enabled = true, .texture_handle = depth_tex_handle}
+        };
+
+        gfx_framebuffer_handle fbo = gfx_framebuffer_create(&fbo_desc);
+
+        gfx_pass_desc shadow_pass = {
+                .fbo_handle = fbo,
+                .actions = GFX_PASS_ACTION_CLEAR_DEPTH,
+                .pass_options = GFX_PASS_OPTION_CULL_BACK | GFX_PASS_OPTION_DEPTH_TEST,
+                .clear_color = {1, 1, 1, 1}
+        };
+
+        handle->shadow_depth_tex = depth_tex_handle;
+        handle->shadow_pass = shadow_pass;
+        handle->fbo = fbo;
+    }
+    gfx_texture_desc default_tex_desc = {
+            .height = 256,
+            .width = 256,
+            .wrap = GFX_TEXTURE_WRAP_CLAMP,
+            .mipmaps = false,
+            .data = OS_MALLOC(256 * 256 * 4),
+            .filter = GFX_TEXTURE_FILTER_NEAREST,
+            .type = GFX_TEXTURE_TYPE_RGBA,
+    };
+    gfx_color white_color = {.x = 1, .y = 1, .z = 1, .w = 1};
+    handle->default_texture = gfx_texture_create_color(&default_tex_desc, white_color);
 
     return handle;
 }
@@ -356,29 +408,49 @@ void controller_camera_fp_update(controller_camera_data* handle, float dt) {
     handle->pos = gl_vec3_add(delta, handle->pos);
 }
 
+void scene_draw_pass(scene_handle handle, bool shadow_pass) {
 
-void scene_draw(scene_handle handle) {
-
-    //for now controller will be embedded, later positions of the nodes will be able to be changed
-    controller_camera_fp_update(&controller_data, device_dt_get());
+    //Todo: shadow texture should always be passed to a shader at binding pointer zero, so other textures
+    //Todo: have nice indexes, starting from one
+    int shadows = handle->enable_shadows;
     for (int32_t i = 0; i < handle->meshes_count; ++i) {
-        scene_mesh* mesh = handle->meshes + i;
+        scene_mesh *mesh = handle->meshes + i;
         for (int32_t j = 0; j < mesh->primitives_count; ++j) {
-
 
             scene_mesh_primitive *primitive = mesh->primitives + j;
             gfx_pipeline_bind(primitive->pipeline_handle);
-            scene_material *mat = handle->materials + primitive->material_id;
-            if (primitive->material_id != -1 && mat->base.valid) {
-                scene_texture *tex = handle->textures + mat->base.color_texture_id;
-                if (mat->base.color_texture_id != -1 && tex->texture_handle != 0) {
-                    gfx_texture_bind(tex->texture_handle, 0);
-                }
-                gfx_uniform_set(mat->color_factor_uniform, mat->base.color_factor);
+            if(!shadow_pass) {
+                scene_material *mat = handle->materials + primitive->material_id;
+                if (primitive->material_id != -1 && mat->base.valid) {
+                    if(handle->textures_count != 0) {
+                        scene_texture *tex = handle->textures + mat->base.color_texture_id;
+                        if (mat->base.color_texture_id != -1 && tex->texture_handle != 0) {
+                            gfx_texture_bind(tex->texture_handle, 0);
+                        }
+                    }
+                    else{
+                        gfx_texture_bind(handle->default_texture, 0);
+                        gfx_texture_bind(handle->default_texture, 1);
+                        gfx_texture_bind(handle->default_texture, 2);
 
-                gfx_uniform_set(mat->model_uniform, mesh->world_tr.data);
-                gfx_uniform_set(mat->view_uniform, controller_data.view.data);
-                gfx_uniform_set(mat->projection_uniform, controller_data.projection.data);
+                    }
+                    gfx_uniform_set(mat->diffuse_color, mat->base.color_factor);
+                    gfx_uniform_set(mat->model_uniform, mesh->world_tr.data);
+                    gfx_uniform_set(mat->view_uniform, controller_data.view.data);
+                    gfx_uniform_set(mat->projection_uniform, controller_data.projection.data);
+                    gfx_uniform_set(mat->sun_direction, handle->sun_settings.direction);
+                    gfx_uniform_set(mat->sun_color, handle->sun_settings.color);
+                    gfx_uniform_set(mat->ambient_color, handle->lighting_settings.ambient_color);
+                    gfx_uniform_set(mat->enable_shadows, &shadows);
+
+                    if(handle->enable_shadows)
+                    {
+                        gfx_texture_bind(handle->shadow_depth_tex, 1);
+                    }
+
+                } else {
+                    gfx_texture_bind(handle->default_texture, 0);
+                }
             }
 
             if (handle->wireframe) {
@@ -388,7 +460,26 @@ void scene_draw(scene_handle handle) {
             }
         }
     }
-    if(handle->bounding_box) dw_draw(handle->dw, controller_data.projection.data, controller_data.view.data);
+    if (handle->bounding_box) dw_draw(handle->dw, controller_data.projection.data, controller_data.view.data);
+}
+
+
+void scene_draw(scene_handle handle) {
+    gfx_blend_enable(false);
+
+    //for now controller will be embedded, later positions of the nodes will be able to be changed
+    controller_camera_fp_update(&controller_data, device_dt_get());
+
+    if (handle->enable_shadows) {
+        gfx_viewport_set(1024, 1024);
+        gfx_begin_pass(&handle->shadow_pass);
+        scene_draw_pass(handle, true);
+        gfx_end_pass();
+    }
+    int32_t w, h;
+    device_window_dimensions_get(&w, &h);
+    gfx_viewport_set(w, h);
+    scene_draw_pass(handle, false);
 }
 
 scene_camera_projection scene_camera_projection_get() {
@@ -425,6 +516,11 @@ void scene_delete(scene_handle handle) {
     }
     gfx_shader_destroy(handle->shader);
     dw_delete(handle->dw);
+    if(handle->enable_shadows){
+        gfx_texture_destroy(handle->shadow_depth_tex);
+        gfx_framebuffer_destroy(handle->fbo);
+    }
+
     OS_FREE(handle->nodes);
     OS_FREE(handle);
 }
@@ -443,4 +539,9 @@ void scene_lighting_set(scene_handle handle, struct scene_lighting_settings ligh
 
 void scene_sun_set(scene_handle handle, struct scene_sun_settings sun_settings) {
     handle->sun_settings = sun_settings;
+}
+
+void *scene_get_lighting_depth_texture(scene_handle handle) {
+    if(handle->enable_shadows) return 0;
+    return handle->shadow_depth_tex;
 }

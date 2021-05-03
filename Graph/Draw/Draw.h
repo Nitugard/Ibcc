@@ -21,7 +21,7 @@ typedef struct dw_desc{
 
 typedef struct dw_data* dw_handle;
 
-API dw_handle dw_new(dw_desc const* desc);
+API dw_handle dw_new(dw_desc const* desc, int32_t capacity);
 
 API void dw_segment_origin(dw_handle handle, gl_vec3 vec, gl_vec3 color);
 API void dw_segment(dw_handle handle, gl_vec3 vec, gl_vec3 origin, gl_vec3 color);

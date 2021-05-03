@@ -6,7 +6,6 @@ find_library(glfw3_lib glfw3 ./ThirdParty/lib/)
 
 add_subdirectory(Graphics)
 add_subdirectory(Device)
-add_subdirectory(Asset)
 add_subdirectory(Model)
 add_subdirectory(Font)
 add_subdirectory(Texture)

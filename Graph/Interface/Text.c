@@ -18,6 +18,7 @@
 #include <string.h>
 #include <Math/GlMath.h>
 #include <Device/Device.h>
+#include <Containers/Array.h>
 
 typedef struct text_data{
     void* vertex_buffer;
@@ -58,13 +59,17 @@ text_handle text_new(int32_t capacity) {
                             .enabled = true,
                             .buffer = handle->buffer,
                             .stride = sizeof(struct font_vertex),
-                            .offset = offsetof(font_vertex, pos)
+                            .offset = offsetof(font_vertex, pos),
+                            .elements_count = 2,
+                            .element_size = 4,
                     },
                     [ATTR_UV_LOCATION] = {
                             .enabled = true,
                             .buffer = handle->buffer,
                             .stride = sizeof(struct font_vertex),
-                            .offset = offsetof(font_vertex, uv)
+                            .offset = offsetof(font_vertex, uv),
+                            .elements_count = 2,
+                            .element_size = 4,
                     }
             },
             .name = "font_instance",
@@ -75,8 +80,8 @@ text_handle text_new(int32_t capacity) {
     return handle;
 }
 
-void text_update(text_handle handle, int32_t offset_x, int32_t offset_y, float scale, const char *label) {
-    if (strlen(label) > handle->capacity) {
+void text_update(text_handle handle, struct text_desc* desc) {
+    if (strlen(desc->label) > handle->capacity) {
         LOG_ERROR("Label length exceeds capacity\n");
         return;
     }
@@ -90,15 +95,15 @@ void text_update(text_handle handle, int32_t offset_x, int32_t offset_y, float s
     int32_t width, height;
     device_window_dimensions_get(&width, &height);
 
-    handle->scale = 1 / scale;
-    handle->offset_x = offset_x;
-    handle->offset_y = offset_y;
+    handle->scale = 1 / desc->scale;
+    handle->offset_x = desc->offset_x;
+    handle->offset_y = desc->offset_y;
 
-    font_result result = font_create(label, handle->vertex_buffer);
+    font_result result = font_create(desc->label, handle->vertex_buffer);
 
 
     gfx_buffer_update(handle->buffer, &buffer_desc);
-    handle->current = strlen(label);
+    handle->current = strlen(desc->label);
     handle->width = result.width;
     handle->height = result.height;
 }
@@ -110,7 +115,7 @@ void text_delete(text_handle handle) {
     OS_FREE(handle);
 }
 
-void text_draw_screen(text_handle handle) {
+void text_draw(text_handle handle) {
 
     gfx_blend_enable(true);
     gfx_blend(GFX_BLEND_SRC_COLOR, GFX_BLEND_ONE_MINUS_SRC_COLOR);

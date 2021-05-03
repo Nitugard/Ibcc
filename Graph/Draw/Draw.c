@@ -11,7 +11,7 @@
 #include <Shaders/Unlit.h>
 #include <Containers/Array.h>
 
-#define STARTING_VERTICES 16534
+//Todo: check draw capacity overflow
 
 typedef struct dw_vertex{
     float pos[3];
@@ -30,6 +30,7 @@ typedef struct dw_list{
 
 typedef struct dw_data {
     dw_list list;
+    int32_t capacity;
 }dw_data;
 
 void dw_init_buffer(struct dw_list* list, uint32_t size, gfx_shader_handle sh_handle)
@@ -51,14 +52,18 @@ void dw_init_buffer(struct dw_list* list, uint32_t size, gfx_shader_handle sh_ha
                     [ATTR_POSITION_LOCATION] = {
                             .enabled = true,
                             .buffer = buff_v,
-                            .offset = 0,
+                            .offset = offsetof(struct dw_vertex, pos),
                             .stride = sizeof(dw_vertex),
+                            .element_size = sizeof(float),
+                            .elements_count = 3,
                     },
                     [ATTR_COLOR_LOCATION] = {
                             .enabled = true,
                             .buffer = buff_v,
                             .offset = offsetof(dw_vertex, color),
                             .stride = sizeof(dw_vertex),
+                            .element_size = sizeof(float),
+                            .elements_count = 3,
                     }
             },
     };
@@ -68,18 +73,18 @@ void dw_init_buffer(struct dw_list* list, uint32_t size, gfx_shader_handle sh_ha
     list->pip = pip;
     list->shader = sh_handle;
     list->v_min = 0;
-    list->projection_uniform = gfx_uniform_register(list->shader, "projection", GFX_MAT4);
-    list->view_uniform = gfx_uniform_register(list->shader, "view", GFX_MAT4);
+    list->projection_uniform = gfx_uniform_register(list->shader, STRING(PROJECTION), GFX_MAT4);
+    list->view_uniform = gfx_uniform_register(list->shader, STRING(VIEW), GFX_MAT4);
 
 }
 
-dw_handle dw_new(const dw_desc *desc) {
+dw_handle dw_new(const dw_desc *desc, int32_t capacity) {
 
     //create handles
     dw_handle handle = OS_MALLOC(sizeof(struct dw_data));
     gfx_shader_handle sh_handle = gfx_shader_create(&unlit_shader_desc);
-
-    dw_init_buffer(&(handle->list), STARTING_VERTICES, sh_handle);
+    handle->capacity = capacity;
+    dw_init_buffer(&(handle->list), capacity, sh_handle);
 
     return handle;
 }
