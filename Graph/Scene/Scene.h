@@ -16,7 +16,7 @@
 #endif
 
 #define SCENE_DEFAULT_LIGHTING {.ambient_color = {0.5, 0.5, 0.6}, .ambient_intensity = 0.7}
-#define SCENE_DEFAULT_SUN {.direction = {-0.7, -1, 0.7}, .color = {1, 1, 0.9}, .intensity = 0.7}
+#define SCENE_DEFAULT_SUN {.direction = {-0.5, -1, 0.5}, .color = {1, 1, 0.9}, .intensity = 0.7}
 
 typedef struct scene_lighting_settings{
     float ambient_color[3];

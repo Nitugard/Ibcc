@@ -175,6 +175,7 @@ API gl_vec3 gl_vec3_normalize(gl_vec3 a);
 API gl_t gl_vec3_norm(gl_vec3 a);
 API gl_vec3 gl_vec3_norm_squared(gl_vec3 a);
 API gl_t gl_vec3_dot(gl_vec3 a, gl_vec3 b);
+API gl_vec3 gl_vec3_negate(gl_vec3 a);
 
 API gl_vec3 gl_vec3_add(gl_vec3 a, gl_vec3 b);
 API gl_vec3 gl_vec3_sub(gl_vec3 a, gl_vec3 b);

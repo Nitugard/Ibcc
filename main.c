@@ -124,7 +124,7 @@ int main()
     mdl_unload(s_desc.model);
     gfx_shader_handle depth_shader = gfx_shader_create(&sprite_shader_desc);
     sprite_desc fb1 = {.gfx_texture_handle = fbo_color_texture, .width = width, .height = height, .scale= 1, .offset_y = 0, .offset_x = 0};
-    sprite_desc fb2 = {.gfx_texture_handle = scene_get_lighting_depth_texture(active_scene), .width = 300, .height = 200, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
+    sprite_desc fb2 = {.gfx_texture_handle = scene_get_lighting_depth_texture(active_scene), .width = width/4, .height = height/4, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
     sprite_new(fb1);
     sprite_new(fb2);
 

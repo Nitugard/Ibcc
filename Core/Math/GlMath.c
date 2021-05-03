@@ -555,3 +555,10 @@ gl_mat gl_mat_from_quaternion(gl_vec4 q) {
 
     return result;
 }
+
+gl_vec3 gl_vec3_negate(gl_vec3 a) {
+    gl_vec3 result;
+    for(int32_t i=0; i<3; ++i)
+        result.data[i] = -a.data[i];
+    return result;
+}
