@@ -36,6 +36,8 @@ static char fs_source[] = STRING(
     uniform mat4 MODEL;
     uniform mat4 VIEW;
 
+    uniform mat4 LIGHT_PROJECTION;
+
     uniform vec3 SUN_DIRECTION;
     uniform vec3 SUN_COLOR;
 
@@ -43,6 +45,18 @@ static char fs_source[] = STRING(
     uniform vec3 DIFFUSE_COLOR;
 
     uniform sampler2D TEXTURE_MAIN;
+    uniform sampler2D TEXTURE_SHADOW;
+
+    float in_shadow()
+    {
+        vec4 lp = LIGHT_PROJECTION * vec4(FRAGMENT_POSITION, 1);
+        vec3 proj = lp.xyz / lp.w; //meaningless for ortographic projection
+        proj = (proj + 1) / 2.0;
+        float depth = texture(TEXTURE_SHADOW, proj.xy).r;
+        float cur_depth = proj.z;
+        float shadow = cur_depth > depth + 0.01  ? 1.0 : 0.0;
+        return shadow;
+    }
 
     void main() {
 
@@ -59,7 +73,9 @@ static char fs_source[] = STRING(
 
         //specular
 
-        lighting = ambient + diffuse;
+        float shadow = in_shadow();
+
+        lighting = ambient + ((1.0 - shadow) * diffuse);
         FragColor = color * vec4(lighting, 1);
     }
 );

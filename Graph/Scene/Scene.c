@@ -44,15 +44,14 @@ typedef struct scene_material{
     gfx_uniform projection_uniform;
     gfx_uniform view_uniform;
 
-
     gfx_uniform sun_color;
     gfx_uniform sun_direction;
 
     gfx_uniform diffuse_color;
     gfx_uniform ambient_color;
 
-
     gfx_uniform enable_shadows;
+    gfx_uniform light_projection;
 } scene_material;
 
 typedef struct scene_mesh_primitive{
@@ -297,6 +296,15 @@ scene_handle scene_new(scene_desc const* desc) {
         mat->sun_direction = gfx_uniform_register(handle->shader, STRING(SUN_DIRECTION), GFX_FLOAT3);
         mat->sun_color = gfx_uniform_register(handle->shader, STRING(SUN_COLOR), GFX_FLOAT3);
         mat->enable_shadows = gfx_uniform_register(handle->shader, STRING(ENABLE_SHADOWS), GFX_INT1);
+        mat->light_projection = gfx_uniform_register(handle->shader, STRING(LIGHT_PROJECTION), GFX_MAT4);
+
+        int tex0loc = 0;
+        int tex1loc = 1;
+        gfx_uniform tex0 = gfx_uniform_register(handle->shader, STRING(TEXTURE_MAIN), GFX_INT1);
+        gfx_uniform tex1 = gfx_uniform_register(handle->shader, STRING(TEXTURE_SHADOW), GFX_INT1);
+
+        gfx_uniform_set(tex0, &tex0loc);
+        gfx_uniform_set(tex1, &tex1loc);
 
     }
 
@@ -335,8 +343,8 @@ scene_handle scene_new(scene_desc const* desc) {
                 .wrap = GFX_TEXTURE_WRAP_CLAMP,
                 .mipmaps = false,
                 .type = GFX_TEXTURE_TYPE_DEPTH,
-                .width = 1024,
-                .height = 1024,
+                .width = 4096,
+                .height = 4096,
                 .data = 0,
                 .filter = GFX_TEXTURE_FILTER_NEAREST
         };
@@ -410,7 +418,8 @@ void controller_camera_fp_update(controller_camera_data* handle, float dt) {
     handle->pos = gl_vec3_add(delta, handle->pos);
 }
 
-void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, bool shadow_pass) {
+void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, gl_mat light_space, bool shadow_pass) {
+
 
     //Todo: shadow texture should always be passed to a shader at binding pointer zero, so other textures
     //Todo: have nice indexes, starting from one
@@ -421,38 +430,32 @@ void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, bool s
 
             scene_mesh_primitive *primitive = mesh->primitives + j;
             gfx_pipeline_bind(primitive->pipeline_handle);
-            if(!shadow_pass) {
-                scene_material *mat = handle->materials + primitive->material_id;
-                if (primitive->material_id != -1 && mat->base.valid) {
-                    if(handle->textures_count != 0) {
-                        scene_texture *tex = handle->textures + mat->base.color_texture_id;
-                        if (mat->base.color_texture_id != -1 && tex->texture_handle != 0) {
-                            gfx_texture_bind(tex->texture_handle, 0);
-                        }
+            scene_material *mat = handle->materials + primitive->material_id;
+            if (primitive->material_id != -1 && mat->base.valid) {
+                if(handle->textures_count != 0) {
+                    scene_texture *tex = handle->textures + mat->base.color_texture_id;
+                    if (mat->base.color_texture_id != -1 && tex->texture_handle != 0) {
+                        gfx_texture_bind(tex->texture_handle, 0);
                     }
-                    else{
-                        gfx_texture_bind(handle->default_texture, 0);
-                        gfx_texture_bind(handle->default_texture, 1);
-                        gfx_texture_bind(handle->default_texture, 2);
-
-                    }
-                    gfx_uniform_set(mat->diffuse_color, mat->base.color_factor);
-                    gfx_uniform_set(mat->model_uniform, mesh->world_tr.data);
-                    gfx_uniform_set(mat->view_uniform, view.data);
-                    gfx_uniform_set(mat->projection_uniform, projection.data);
-                    gfx_uniform_set(mat->sun_direction, handle->sun_settings.direction);
-                    gfx_uniform_set(mat->sun_color, handle->sun_settings.color);
-                    gfx_uniform_set(mat->ambient_color, handle->lighting_settings.ambient_color);
-                    gfx_uniform_set(mat->enable_shadows, &shadows);
-
-                    if(handle->enable_shadows)
-                    {
-                        gfx_texture_bind(handle->shadow_depth_tex, 1);
-                    }
-
-                } else {
+                }
+                else{
                     gfx_texture_bind(handle->default_texture, 0);
                 }
+
+                gfx_texture_bind(handle->shadow_depth_tex, 1);
+                gfx_uniform_set(mat->diffuse_color, mat->base.color_factor);
+                gfx_uniform_set(mat->model_uniform, mesh->world_tr.data);
+                gfx_uniform_set(mat->view_uniform, view.data);
+                gfx_uniform_set(mat->projection_uniform, projection.data);
+                gfx_uniform_set(mat->sun_direction, handle->sun_settings.direction);
+                gfx_uniform_set(mat->sun_color, handle->sun_settings.color);
+                gfx_uniform_set(mat->ambient_color, handle->lighting_settings.ambient_color);
+                gfx_uniform_set(mat->enable_shadows, &shadows);
+                gfx_uniform_set(mat->light_projection, light_space.data);
+
+            } else {
+                gfx_texture_bind(handle->default_texture, 0);
+                gfx_texture_bind(handle->shadow_depth_tex, 1);
             }
 
             if (handle->wireframe) {
@@ -471,21 +474,25 @@ void scene_draw(scene_handle handle) {
     //for now controller will be embedded, later positions of the nodes will be able to be changed
     device_window_dimensions_get(&w, &h);
     controller_camera_fp_update(&controller_data, device_dt_get());
+    gl_mat light_space =GL_MAT_IDENTITY;
     if (handle->enable_shadows) {
 
         //calcullate projection and view
         gl_mat view, projection;
         gl_vec3 light_dir = gl_vec3_new_arr(handle->sun_settings.direction);
+        light_dir.x = gl_sin(device_time_get() / 10)/2;
+        light_dir.z = -gl_cos(device_time_get() / 10);
+        light_dir.y = -1;
         view = gl_mat_look_at(gl_vec3_new(0,0,0), gl_vec3_mul((gl_vec3_normalize(light_dir)), gl_vec3_new_scalar(-100)), gl_vec3_new(0,1,0));
-        projection = gl_mat_ortographic(-50, 50, -50, 50, 0.1, 1000);
-
-        gfx_viewport_set(1024, 1024);
+        projection = gl_mat_ortographic(-60, 60, -60, 60, 0.1, 1000);
+        light_space = GL_MAT_MUL_LR(projection, view);
+        gfx_viewport_set(4096, 4096);
         gfx_begin_pass(&handle->shadow_pass);
-        scene_draw_pass(handle, projection, view, false);
+        scene_draw_pass(handle, projection, view, light_space, true);
         gfx_end_pass();
     }
     gfx_viewport_set(w, h);
-    scene_draw_pass(handle, controller_data.projection, controller_data.view, false);
+    scene_draw_pass(handle, controller_data.projection, controller_data.view, light_space, false);
 }
 
 scene_camera_projection scene_camera_projection_get() {

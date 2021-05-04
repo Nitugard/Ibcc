@@ -17,9 +17,12 @@
 #define ATTR_JOINTS_LOCATION 6
 
 #define TEXTURE_MAIN color_texture
+#define TEXTURE_SHADOW shadow_texture
 #define PROJECTION projection
 #define MODEL model
 #define VIEW view
+#define LIGHT_VIEW light_view
+#define LIGHT_PROJECTION light_projection
 
 #define VERTEX_POSITION v_pos
 #define VERTEX_UV v_uv

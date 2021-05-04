@@ -35,11 +35,11 @@ int main()
 
 
     device_desc device_desc = {
-            .height = 720,
-            .width = 1280,
+            .height = 1280,
+            .width = 1960,
             .name = "Device",
             .fullscreen = false,
-            .msaa = 0,
+            .msaa = 2,
     };
 
     device_init();
@@ -111,7 +111,7 @@ int main()
 
     mdl_desc sponza_mdl_desc = {
             .path = "./Data/sponza_tex.gltf",
-            .load_textures = false
+            .load_textures =true
     };
 
     scene_desc s_desc = {
