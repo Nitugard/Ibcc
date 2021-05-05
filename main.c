@@ -35,11 +35,11 @@ int main()
 
 
     device_desc device_desc = {
-            .height = 1280,
-            .width = 1960,
+            .height = 720,
+            .width = 1280,
             .name = "Device",
             .fullscreen = false,
-            .msaa = 2,
+            .msaa = 0,
     };
 
     device_init();
