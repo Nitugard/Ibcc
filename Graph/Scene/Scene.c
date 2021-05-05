@@ -63,7 +63,7 @@ typedef struct scene_mesh_primitive{
     gfx_buffer_handle buffer_handle;
     gfx_buffer_handle index_handle;
 
-
+    gfx_draw_type draw_type;
     gl_vec3 min, max;
 } scene_mesh_primitive;
 
@@ -133,6 +133,8 @@ scene_mesh_primitive scene_new_primitive(gfx_shader_handle shader, mdl_primitive
 
     result.buffer_handle = gfx_buffer_create(&buffer_desc);
 
+    //Todo: this should be one to map map(using switch case)
+    result.draw_type = (uint32_t)primitive.primitive_type;
 
     //create attributes
     gfx_pipeline_attr active_attributes[MAXIMUM_PIPELINE_ATTRIBUTES];
@@ -343,8 +345,8 @@ scene_handle scene_new(scene_desc const* desc) {
                 .wrap = GFX_TEXTURE_WRAP_CLAMP,
                 .mipmaps = false,
                 .type = GFX_TEXTURE_TYPE_DEPTH,
-                .width = 4096,
-                .height = 4096,
+                .width = desc->lighting.shadow_heightmap_size,
+                .height = desc->lighting.shadow_heightmap_size,
                 .data = 0,
                 .filter = GFX_TEXTURE_FILTER_NEAREST
         };
@@ -458,10 +460,11 @@ void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, gl_mat
                 gfx_texture_bind(handle->shadow_depth_tex, 1);
             }
 
+            //todo: remove this
             if (handle->wireframe) {
                 gfx_draw_id(GFX_LINES, primitive->indices_count);
             } else {
-                gfx_draw_id(GFX_TRIANGLES, primitive->indices_count);
+                gfx_draw_id(primitive->draw_type, primitive->indices_count);
             }
         }
     }
@@ -476,17 +479,16 @@ void scene_draw(scene_handle handle) {
     controller_camera_fp_update(&controller_data, device_dt_get());
     gl_mat light_space =GL_MAT_IDENTITY;
     if (handle->enable_shadows) {
-
-        //calcullate projection and view
+        //calculate projection and view in order to create camera projection matrix
         gl_mat view, projection;
         gl_vec3 light_dir = gl_vec3_new_arr(handle->sun_settings.direction);
         light_dir.x = gl_sin(device_time_get() / 10)/2;
         light_dir.z = -gl_cos(device_time_get() / 10);
         light_dir.y = -1;
-        view = gl_mat_look_at(gl_vec3_new(0,0,0), gl_vec3_mul((gl_vec3_normalize(light_dir)), gl_vec3_new_scalar(-100)), gl_vec3_new(0,1,0));
-        projection = gl_mat_ortographic(-60, 60, -60, 60, 0.1, 1000);
+        view = gl_mat_look_at(gl_vec3_new(0,0,0), gl_vec3_mul((gl_vec3_normalize(light_dir)), gl_vec3_new_scalar(-10)), gl_vec3_new(0,1,0));
+        projection = gl_mat_ortographic(-10, 10, -10, 10, 0.1, 100);
         light_space = GL_MAT_MUL_LR(projection, view);
-        gfx_viewport_set(4096, 4096);
+        gfx_viewport_set(handle->lighting_settings.shadow_heightmap_size, handle->lighting_settings.shadow_heightmap_size);
         gfx_begin_pass(&handle->shadow_pass);
         scene_draw_pass(handle, projection, view, light_space, true);
         gfx_end_pass();
@@ -547,6 +549,7 @@ void scene_bounding_box_toggle(scene_handle handle) {
 }
 
 void scene_lighting_set(scene_handle handle, struct scene_lighting_settings lighting_settings) {
+    assert(handle->lighting_settings.shadow_heightmap_size == lighting_settings.shadow_heightmap_size);
     handle->lighting_settings = lighting_settings;
 }
 
@@ -554,7 +557,39 @@ void scene_sun_set(scene_handle handle, struct scene_sun_settings sun_settings) 
     handle->sun_settings = sun_settings;
 }
 
-void *scene_get_lighting_depth_texture(scene_handle handle) {
+void *scene_directional_lighting_depth_texture_get(scene_handle handle) {
     assert(handle->enable_shadows);
     return handle->shadow_depth_tex;
 }
+
+struct scene_inode scene_node_get(scene_handle handle, const char *name) {
+    scene_inode result;
+    for(int32_t i=0; i<handle->nodes_count; ++i) {
+        if (handle->nodes[i].name == 0) continue;
+        if (strcmp(handle->nodes[i].name, name) == 0) {
+            result.name = handle->nodes[i].name;
+            result.children_count = handle->nodes[i].children_count;
+            result.internal = handle->nodes + i;
+            os_memcpy(result.local, handle->nodes[i].local_tr.data, sizeof(gl_t) * 16);
+            return result;
+        }
+    }
+    result.name = 0;
+    result.internal = 0;
+    return result;
+}
+
+void scene_node_update(scene_handle handle, scene_inode *node) {
+    if(node->internal == 0) {
+        //todo: log error
+        return;
+    }
+    scene_node *node_int = (scene_node *) node->internal;
+    os_memcpy(node_int->local_tr.data, node->local, sizeof(gl_mat));
+
+    //update mesh local transform
+    if(node_int->mesh_index != -1)
+        os_memcpy(handle->meshes[node_int->mesh_index].world_tr.data, node->local, sizeof(gl_mat));
+}
+
+

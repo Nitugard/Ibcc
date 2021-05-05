@@ -32,8 +32,6 @@ void toggle_bounding_box()
 
 int main()
 {
-
-
     device_desc device_desc = {
             .height = 720,
             .width = 1280,
@@ -110,7 +108,7 @@ int main()
     };
 
     mdl_desc sponza_mdl_desc = {
-            .path = "./Data/sponza_tex.gltf",
+            .path = "./Data/cube.gltf",
             .load_textures =true
     };
 
@@ -122,9 +120,10 @@ int main()
     };
     active_scene = scene_new(&s_desc);
     mdl_unload(s_desc.model);
+
     gfx_shader_handle depth_shader = gfx_shader_create(&sprite_shader_desc);
     sprite_desc fb1 = {.gfx_texture_handle = fbo_color_texture, .width = width, .height = height, .scale= 1, .offset_y = 0, .offset_x = 0};
-    sprite_desc fb2 = {.gfx_texture_handle = scene_get_lighting_depth_texture(active_scene), .width = width/4, .height = height/4, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
+    sprite_desc fb2 = {.gfx_texture_handle = scene_directional_lighting_depth_texture_get(active_scene), .width = width/4, .height = height/4, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
     sprite_new(fb1);
     sprite_new(fb2);
 
@@ -139,11 +138,15 @@ int main()
     text_desc fps_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 30, .scale = 1};
     text_desc alloc_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 60, .scale = 1};
 
+    scene_inode node = scene_node_get(active_scene, "Cube");
+
     scene_camera_projection scene_mvp;
     while(device_window_valid()) {
 
         device_update_events();
         gfx_reset_draw_call_count();
+
+        scene_node_update(active_scene, &node);
 
         //First pass
         gfx_begin_pass(&pass_desc);
@@ -154,11 +157,11 @@ int main()
         text_update(fps_text, &fps_text_desc);
         sprintf(text_buffer, "Heap count: %i Heap size: %i", os_get_tracked_allocations_length(), (int)(os_get_tracked_allocations_size()));
         text_update(alloc_text, &alloc_text_desc);
+        dw_draw(dw, scene_mvp.projection, scene_mvp.view);
         gfx_end_pass();
 
         //Second pass
         gfx_begin_pass(&default_pass);
-        dw_draw(dw, scene_mvp.projection, scene_mvp.view);
         sprite_draw();
         text_draw(fps_text);
         text_draw(alloc_text);

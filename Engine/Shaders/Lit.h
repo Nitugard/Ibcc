@@ -54,7 +54,7 @@ static char fs_source[] = STRING(
         proj = (proj + 1) / 2.0;
         float depth = texture(TEXTURE_SHADOW, proj.xy).r;
         float cur_depth = proj.z;
-        float shadow = cur_depth > depth + 0.01  ? 1.0 : 0.0;
+        float shadow = cur_depth > depth + 0.0002  ? 1.0 : 0.0;
         return shadow;
     }
 
