@@ -4,10 +4,6 @@
  *  All Rights Reserved.
  */
 
-/*
- * Todo: Use single vertex buffer array.
- */
-
 #include "Text.h"
 #include <Graphics/Graphics.h>
 #include <Os/Allocator.h>

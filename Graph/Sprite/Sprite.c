@@ -171,47 +171,14 @@ void sprite_draw() {
     gfx_pipeline_bind(manager.pipeline);
     for (int32_t i = 0; i < size; ++i) {
         sprite_data *data = sprite_get(i);
-        if(data->desc.custom_shader.enabled)
+        if (data->desc.custom_shader.enabled)
             gfx_shader_bind(data->desc.custom_shader.gfx_shader_handle);
         else
             gfx_shader_bind(manager.shader);
         gfx_uniform_set(manager.projection_uniform, data->projection.data);
-        if(data->desc.gfx_texture_handle != 0)
+        if (data->desc.gfx_texture_handle != 0)
             gfx_texture_bind(data->desc.gfx_texture_handle, 0);
         gfx_draw(GFX_TRIANGLES, i * 6, data->vertices);
     }
 }
-
-sprite_handle sprite_new_triangle(struct sprite_desc desc) {
-    if (arr_full(manager.sprites_arr)) {
-        LOG_ERROR("Sprites array is full\n");
-        return 0;
-    }
-
-    sprite_data temp_data = {0};
-    arr_add(manager.sprites_arr, &temp_data);
-    sprite_vertex v0 = {.pos = {.x = 0, .y = 0}, .uv = {.x = 0, .y = 0}};
-    sprite_vertex v1 = {.pos = {.x = desc.width, .y = 0}, .uv = {.x = 1, .y = 0} };
-    sprite_vertex v2 = {.pos = {.x = 0, .y = desc.height}, .uv = {.x = 0, .y = 1}};
-
-    sprite_quad tris = {
-            .vertices = {v0, v1, v2}
-    };
-    int32_t index = arr_size(manager.sprites_arr) - 1;
-    os_memcpy((char *) manager.data + index * sizeof(struct sprite_quad), tris.vertices, sizeof(struct sprite_quad));
-    sprite_data *data = arr_get(manager.sprites_arr, index);
-    data->vertices = 3;
-    sprite_update(data, desc);
-    gfx_buffer_desc vbo_desc = {
-            .update_mode = GFX_BUFFER_UPDATE_DYNAMIC_DRAW,
-            .type = GFX_BUFFER_VERTEX,
-            .size = sizeof(struct sprite_quad) * manager.capacity,
-            .data = manager.data,
-    };
-
-    gfx_buffer_update(manager.vbo, &vbo_desc);
-    return data;
-
-}
-
 

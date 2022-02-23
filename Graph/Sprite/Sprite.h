@@ -37,7 +37,6 @@ API void sprite_init(int32_t capacity);
 API void sprite_terminate();
 
 API sprite_handle sprite_new(sprite_desc desc);
-API sprite_handle sprite_new_triangle(struct sprite_desc desc);
 API void sprite_update(sprite_handle handle, sprite_desc desc);
 API void sprite_delete(sprite_handle handle);
 

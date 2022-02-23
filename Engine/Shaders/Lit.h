@@ -32,6 +32,8 @@ static char fs_source[] = STRING(
     in vec2 FRAGMENT_UV;
     in vec3 FRAGMENT_NORMAL;
 
+    uniform int ENABLE_SHADOWS;
+
     uniform mat4 PROJECTION;
     uniform mat4 MODEL;
     uniform mat4 VIEW;
@@ -49,12 +51,14 @@ static char fs_source[] = STRING(
 
     float in_shadow()
     {
+        if(ENABLE_SHADOWS == 0) return 0;
+
         vec4 lp = LIGHT_PROJECTION * vec4(FRAGMENT_POSITION, 1);
-        vec3 proj = lp.xyz / lp.w; //meaningless for ortographic projection
+        vec3 proj = lp.xyz / lp.w;
         proj = (proj + 1) / 2.0;
         float depth = texture(TEXTURE_SHADOW, proj.xy).r;
         float cur_depth = proj.z;
-        float shadow = cur_depth > depth + 0.0002  ? 1.0 : 0.0;
+        float shadow = cur_depth > depth + 0.002  ? 1.0 : 0.0;
         return shadow;
     }
 
@@ -65,15 +69,20 @@ static char fs_source[] = STRING(
         vec3 lighting = vec3(1,1,1);
         vec4 color = texture(TEXTURE_MAIN, FRAGMENT_UV);
 
+        if(color.a < 0.5)
+            discard;
+
         //ambient
-        vec3 ambient = AMBIENT_COLOR.xyz;
+        vec3 ambient = AMBIENT_COLOR.xyz * 0.78f; //???
 
         //diffuse
         vec3 diffuse = (SUN_COLOR * clamp(dot(normalize(-SUN_DIRECTION), normal), 0, 1)) * DIFFUSE_COLOR;
 
         //specular
 
-        float shadow = in_shadow();
+        float shadow = 0;
+        if(enable_shadows > 0)
+            shadow = in_shadow();
 
         lighting = ambient + ((1.0 - shadow) * diffuse);
         FragColor = color * vec4(lighting, 1);
@@ -88,5 +97,5 @@ static gfx_shader_desc lit_shader_desc = {
                 [ATTR_POSITION_LOCATION] = {.size = 4, .num_elements = 3},
                 [ATTR_UV_LOCATION] = {.size = 4, .num_elements = 2},
                 [ATTR_NORMAL_LOCATION] = {.size = 4, .num_elements = 3},
-        }
+        },
 };

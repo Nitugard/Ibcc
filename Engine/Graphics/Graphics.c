@@ -531,7 +531,10 @@ gfx_uniform gfx_uniform_register(gfx_shader_handle shader, const char *name, gfx
     glUseProgram(shader->id);
     result.id = glGetUniformLocation(shader->id, name);
     result.enabled = true;
-    if(result.id == -1) { result.enabled = false; LOG_ERROR("Uniform not found %s\n", name); return result;}
+    if(result.id == -1) {
+        result.enabled = false; LOG_ERROR("Uniform not found %s for shader %i\n", name, shader->id);
+        return result;
+    }
     switch (type) {
         case GFX_FLOAT1: result.setter = uniform_set_f1; break;
         case GFX_FLOAT2: result.setter = uniform_set_f2; break;

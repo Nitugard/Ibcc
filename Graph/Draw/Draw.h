@@ -8,7 +8,6 @@
 #ifndef IBC_DRAW_H
 #define IBC_DRAW_H
 
-#include <Graphics/Graphics.h>
 #include "Math/GlMath.h"
 
 #ifndef API

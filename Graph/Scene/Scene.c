@@ -217,7 +217,8 @@ scene_handle scene_new(scene_desc const* desc) {
     int32_t width, height;
     device_window_dimensions_get(&width, &height);
 
-    controller_data.pos = gl_vec3_new(0,1,-10);
+    controller_data.pos = gl_vec3_new(0,3,0);
+    controller_data.rot_euler = gl_vec3_new(0,90,0);
     controller_data.projection = gl_mat_perspective(80, (float)width / height, 0.01, 100);
 
     mdl_data* model = desc->model;
@@ -295,18 +296,22 @@ scene_handle scene_new(scene_desc const* desc) {
 
         mat->diffuse_color = gfx_uniform_register(handle->shader, STRING(DIFFUSE_COLOR), GFX_FLOAT3);
         mat->ambient_color = gfx_uniform_register(handle->shader, STRING(AMBIENT_COLOR), GFX_FLOAT3);
+
         mat->sun_direction = gfx_uniform_register(handle->shader, STRING(SUN_DIRECTION), GFX_FLOAT3);
         mat->sun_color = gfx_uniform_register(handle->shader, STRING(SUN_COLOR), GFX_FLOAT3);
+
         mat->enable_shadows = gfx_uniform_register(handle->shader, STRING(ENABLE_SHADOWS), GFX_INT1);
         mat->light_projection = gfx_uniform_register(handle->shader, STRING(LIGHT_PROJECTION), GFX_MAT4);
 
         int tex0loc = 0;
         int tex1loc = 1;
         gfx_uniform tex0 = gfx_uniform_register(handle->shader, STRING(TEXTURE_MAIN), GFX_INT1);
-        gfx_uniform tex1 = gfx_uniform_register(handle->shader, STRING(TEXTURE_SHADOW), GFX_INT1);
-
         gfx_uniform_set(tex0, &tex0loc);
-        gfx_uniform_set(tex1, &tex1loc);
+
+        if(handle->enable_shadows) {
+            gfx_uniform tex1 = gfx_uniform_register(handle->shader, STRING(TEXTURE_SHADOW), GFX_INT1);
+            gfx_uniform_set(tex1, &tex1loc);
+        }
 
     }
 
@@ -444,7 +449,9 @@ void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, gl_mat
                     gfx_texture_bind(handle->default_texture, 0);
                 }
 
-                gfx_texture_bind(handle->shadow_depth_tex, 1);
+                if(handle->enable_shadows)
+                    gfx_texture_bind(handle->shadow_depth_tex, 1);
+
                 gfx_uniform_set(mat->diffuse_color, mat->base.color_factor);
                 gfx_uniform_set(mat->model_uniform, mesh->world_tr.data);
                 gfx_uniform_set(mat->view_uniform, view.data);
@@ -457,7 +464,9 @@ void scene_draw_pass(scene_handle handle, gl_mat projection, gl_mat view, gl_mat
 
             } else {
                 gfx_texture_bind(handle->default_texture, 0);
-                gfx_texture_bind(handle->shadow_depth_tex, 1);
+                if (handle->enable_shadows) {
+                    gfx_texture_bind(handle->shadow_depth_tex, 1);
+                }
             }
 
             //todo: remove this
@@ -485,8 +494,9 @@ void scene_draw(scene_handle handle) {
         light_dir.x = gl_sin(device_time_get() / 10)/2;
         light_dir.z = -gl_cos(device_time_get() / 10);
         light_dir.y = -1;
-        view = gl_mat_look_at(gl_vec3_new(0,0,0), gl_vec3_mul((gl_vec3_normalize(light_dir)), gl_vec3_new_scalar(-10)), gl_vec3_new(0,1,0));
-        projection = gl_mat_ortographic(-10, 10, -10, 10, 0.1, 100);
+        os_memcpy(handle->sun_settings.direction, light_dir.data, sizeof(gl_vec3));
+        view = gl_mat_look_at(gl_vec3_new(0,0,0), gl_vec3_mul((gl_vec3_normalize(light_dir)), gl_vec3_new_scalar(-70)), gl_vec3_new(0,1,0));
+        projection = gl_mat_ortographic(-20, 20, -20, 20, 0.1, 100);
         light_space = GL_MAT_MUL_LR(projection, view);
         gfx_viewport_set(handle->lighting_settings.shadow_heightmap_size, handle->lighting_settings.shadow_heightmap_size);
         gfx_begin_pass(&handle->shadow_pass);
@@ -590,6 +600,10 @@ void scene_node_update(scene_handle handle, scene_inode *node) {
     //update mesh local transform
     if(node_int->mesh_index != -1)
         os_memcpy(handle->meshes[node_int->mesh_index].world_tr.data, node->local, sizeof(gl_mat));
+}
+
+scene_inode scene_main_camera_get(scene_handle handle) {
+    return scene_node_get(handle, "main_camera");
 }
 
 

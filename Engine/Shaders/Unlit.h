@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Graphics/Graphics.h>
 #include "Common.h"
 
 static const char vs_source[] = STRING(

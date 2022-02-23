@@ -2,11 +2,11 @@
 #include "Device/Device.h"
 #include "Os/Allocator.h"
 #include "Graphics/Graphics.h"
-#include <Interface/Text.h>
+#include <Text/Text.h>
 #include <Model/Model.h>
 #include <Scene/Scene.h>
 #include <Draw/Draw.h>
-#include <Interface/Sprite.h>
+#include <Sprite/Sprite.h>
 #include <Shaders/DepthShader.h>
 
 /*
@@ -36,7 +36,7 @@ int main()
             .height = 720,
             .width = 1280,
             .name = "Device",
-            .fullscreen = false,
+            .fullscreen = true,
             .msaa = 0,
     };
 
@@ -108,24 +108,22 @@ int main()
     };
 
     mdl_desc sponza_mdl_desc = {
-            .path = "./Data/cube.gltf",
+            .path = "./Data/sponza_tex_single.gltf",
             .load_textures =true
     };
 
     scene_desc s_desc = {
             .model = mdl_load(&sponza_mdl_desc),
-            .enable_shadows = true,
             .lighting = SCENE_DEFAULT_LIGHTING,
             .sun = SCENE_DEFAULT_SUN,
     };
+
     active_scene = scene_new(&s_desc);
     mdl_unload(s_desc.model);
 
     gfx_shader_handle depth_shader = gfx_shader_create(&sprite_shader_desc);
     sprite_desc fb1 = {.gfx_texture_handle = fbo_color_texture, .width = width, .height = height, .scale= 1, .offset_y = 0, .offset_x = 0};
-    sprite_desc fb2 = {.gfx_texture_handle = scene_directional_lighting_depth_texture_get(active_scene), .width = width/4, .height = height/4, .scale= 1, .offset_y = 0, .offset_x = 0, .custom_shader = {.enabled = true, .gfx_shader_handle = depth_shader}};
     sprite_new(fb1);
-    sprite_new(fb2);
 
     dw_desc desc = {};
     dw_handle dw = dw_new(&desc, 100);
@@ -133,20 +131,20 @@ int main()
     dw_apply(dw);
 
     char text_buffer[100];
-    text_handle fps_text = text_new(100);
-    text_handle alloc_text = text_new(100);
+    text_handle fps_text = text_new(64);
+    text_handle alloc_text = text_new(64);
+    text_handle made_by_text = text_new(32);
     text_desc fps_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 30, .scale = 1};
     text_desc alloc_text_desc = {.label = text_buffer, .offset_x = 0, .offset_y = height - 60, .scale = 1};
-
-    scene_inode node = scene_node_get(active_scene, "Cube");
+    text_desc made_by_desc = {.label = text_buffer, .offset_x = 0, .offset_y = 10, .scale = 1};
+    sprintf(text_buffer, "Sredojevic Dragutin 513-2019");
+    text_update(made_by_text, &made_by_desc);
 
     scene_camera_projection scene_mvp;
     while(device_window_valid()) {
 
         device_update_events();
         gfx_reset_draw_call_count();
-
-        scene_node_update(active_scene, &node);
 
         //First pass
         gfx_begin_pass(&pass_desc);
@@ -165,6 +163,7 @@ int main()
         sprite_draw();
         text_draw(fps_text);
         text_draw(alloc_text);
+        text_draw(made_by_text);
         gfx_end_pass();
 
         //Swap buffers
@@ -174,6 +173,7 @@ int main()
 
     text_delete(fps_text);
     text_delete(alloc_text);
+    text_delete(made_by_text);
 
     gfx_framebuffer_destroy(fbo_handle);
     gfx_shader_destroy(depth_shader);
