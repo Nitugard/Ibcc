@@ -51,7 +51,9 @@ typedef struct scene_internal_pbr_material{
     int32_t view_uniform;
     int32_t view_position_uniform;
     int32_t rougness_uniform;
+    int32_t metallic_uniform;
     int32_t color_uniform;
+    int32_t skybox_uniform;
 
     gfx_shader_handle shader;
 } scene_internal_pbr_material;
@@ -279,7 +281,9 @@ scene_handle scene_new(scene_desc const* desc) {
         gfx_shader_uniform_enable(mat->shader, VIEW_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &mat->view_uniform );
         gfx_shader_uniform_enable(mat->shader, VIEW_POSITION_NAME, GFX_TYPE_FLOAT_VEC_3, &mat->view_position_uniform );
         gfx_shader_uniform_enable(mat->shader, "roughness", GFX_TYPE_FLOAT_VEC_1, &mat->rougness_uniform );
+        gfx_shader_uniform_enable(mat->shader, "metallic", GFX_TYPE_FLOAT_VEC_1, &mat->metallic_uniform );
         gfx_shader_uniform_enable(mat->shader, "base_color", GFX_TYPE_FLOAT_VEC_3, &mat->color_uniform);
+        gfx_shader_uniform_enable(mat->shader, "skybox", GFX_TYPE_SAMPLER_CUBE, &mat->skybox_uniform);
 
     }
     OS_FREE(vs);
@@ -410,6 +414,10 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     gl_mat view = gl_mat_inverse(world_tr);
     gl_mat view_no_tr = gl_mat_remove_translation(view);
     gl_vec3 view_pos = gl_mat_get_translation(world_tr);
+    int32_t texture_unit = 0;
+    if(handle->skybox_enabled) {
+        skybox_bind(handle->skybox);
+    }
 
     for (int32_t i = 0; i < handle->meshes_count; ++i) {
         scene_internal_mesh *mesh = handle->meshes + i;
@@ -429,6 +437,8 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->projection_uniform, projection);
                 gfx_shader_uniform_set(mat->shader, mat->color_uniform, mat->color_factor);
                 gfx_shader_uniform_set(mat->shader, mat->rougness_uniform, &mat->roughness_factor);
+                gfx_shader_uniform_set(mat->shader, mat->metallic_uniform, &mat->metallic_factor);
+                gfx_shader_uniform_set(mat->shader, mat->skybox_uniform, &texture_unit);
 
             }
 
@@ -647,4 +657,3 @@ void scene_camera_get_at(scene_handle handle, int32_t index, struct scene_node *
     camera_data->fov = int_camera->fov;
     os_memcpy(camera_data->projection, int_camera->projection.data, sizeof(gl_mat));
 }
-

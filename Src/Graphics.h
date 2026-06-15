@@ -191,6 +191,7 @@ IBC_API void gfx_draw_id(enum gfx_draw_type type, int32_t length);
 
 IBC_API void gfx_blend(enum gfx_blend_type src, enum gfx_blend_type dest);
 IBC_API void gfx_blend_enable(bool state);
+IBC_API void gfx_cull_enable(bool state);
 
 IBC_API gfx_pipeline_handle gfx_pipeline_create(gfx_shader_handle handle);
 IBC_API void gfx_pipeline_index_enable(gfx_pipeline_handle handle, gfx_buffer_handle buffer);
@@ -202,7 +203,7 @@ IBC_API void gfx_pipeline_destroy(gfx_pipeline_handle handle);
 IBC_API void gfx_pipeline_use_depth_buffer(gfx_pipeline_handle handle, bool value);
 
 IBC_API void gfx_shader_uniform_enable(gfx_shader_handle handle, const char* name, gfx_type type, int32_t* uniform_index);
-IBC_API void gfx_shader_uniform_set(gfx_shader_handle handle, uint32_t uniform_index, void* data);
+IBC_API void gfx_shader_uniform_set(gfx_shader_handle handle, int32_t uniform_index, void* data);
 
 IBC_API gfx_framebuffer_handle gfx_framebuffer_create(gfx_texture_handle color_texture, gfx_texture_handle depth_texture);
 IBC_API void gfx_framebuffer_destroy(gfx_framebuffer_handle handle);

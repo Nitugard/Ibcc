@@ -440,7 +440,7 @@ gl_mat gl_mat_look_at(gl_vec3 forward, gl_vec3 eye, gl_vec3 up) {
     return viewMatrix;
 }
 
-gl_vec3 gl_vec3_new_arr(float *arr) {
+gl_vec3 gl_vec3_new_arr(float arr[3]) {
     gl_vec3 result;
     result.x =arr[0];
     result.y =arr[1];
@@ -448,7 +448,7 @@ gl_vec3 gl_vec3_new_arr(float *arr) {
     return result;
 }
 
-gl_vec4 gl_vec4_new_arr(float *arr) {
+gl_vec4 gl_vec4_new_arr(float arr[4]) {
     gl_vec4 result;
     result.x = arr[0];
     result.y = arr[1];
@@ -467,7 +467,7 @@ gl_mat gl_mat_new_identity() {
     return result;
 }
 
-gl_mat gl_mat_new_array(float *arr) {
+gl_mat gl_mat_new_array(float arr[16]) {
     gl_mat result;
     for(int32_t i=0; i<16; ++i) result.data[i] = arr[i];
     return result;

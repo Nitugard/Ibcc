@@ -151,6 +151,10 @@ void window_scene_views_mark_as_dirty(){
 }
 
 void window_shader_editor(){
+    int32_t width, height;
+    device_window_dimensions_get(&width, &height);
+    igSetNextWindowPos((ImVec2){8, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
+    igSetNextWindowSize((ImVec2){width * 0.58f, height * 0.36f}, ImGuiCond_FirstUseEver);
     igBegin("Shader Editor", 0, 0);
     char name_buffer[1024];
     if(igBeginTabBar("##tabs", ImGuiTabBarFlags_Reorderable)) {
@@ -207,7 +211,15 @@ void window_scene_view_create(){
 
 void window_scene_view_draw(){
     int32_t color;
+    int32_t window_width, window_height;
+    device_window_dimensions_get(&window_width, &window_height);
     for(int32_t i=0; i<sizeof(views) / sizeof(void*); ++i) {
+        float margin = 8.0f;
+        float top = 8.0f;
+        float view_width = (window_width - margin * 3.0f) * 0.5f;
+        float view_height = window_height * 0.58f;
+        igSetNextWindowPos((ImVec2){margin + i * (view_width + margin), top}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
+        igSetNextWindowSize((ImVec2){view_width, view_height}, ImGuiCond_FirstUseEver);
 
         ImGuiWindowFlags_ flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
                                   | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysUseWindowPadding
@@ -237,6 +249,10 @@ void window_scene_view_draw(){
 }
 
 void window_log(){
+    int32_t width, height;
+    device_window_dimensions_get(&width, &height);
+    igSetNextWindowPos((ImVec2){width * 0.59f, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
+    igSetNextWindowSize((ImVec2){width * 0.20f, height * 0.36f}, ImGuiCond_FirstUseEver);
     igBegin("Log", 0, 0);
     char timeBuffer[1024];
     for(int i=logs_count-1; i>=0; --i) {
@@ -353,6 +369,10 @@ void window_manipulator_demo(){
         window_scene_views_mark_as_dirty();
     }
 
+    int32_t width, height;
+    device_window_dimensions_get(&width, &height);
+    igSetNextWindowPos((ImVec2){width * 0.80f, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
+    igSetNextWindowSize((ImVec2){width * 0.18f, 180}, ImGuiCond_FirstUseEver);
     if(igBegin("Manipulator",0,ImGuiWindowFlags_NoBackground)) {
         if (igButton("Translate X", (struct ImVec2) {200, 25})) {
             nauo2_side *= -1;
@@ -391,7 +411,7 @@ void window_manipulator_demo(){
 }
 
 void window_init(struct window_config const* config) {
-    device_init(3, 0);
+    device_init(3, 3);
     device = device_new(config->title, config->width, config->height, config->vsync, config->fullscreen,
                         config->resizable);
     device_set_current(device);
@@ -420,7 +440,6 @@ void window_init(struct window_config const* config) {
     logs_count=0;
 }
 
-int32_t color;
 void window_run() {
     while(device_window_valid()) {
 
@@ -434,7 +453,9 @@ void window_run() {
         window_shader_editor();
         window_manipulator_demo();
         window_log();
-        igShowMetricsWindow(0);
+        int32_t width, height;
+        device_window_dimensions_get(&width, &height);
+        gfx_viewport_set(width, height);
         gui_end_frame();
         gfx_end_pass();
         device_refresh();

@@ -23,7 +23,7 @@
 #include "Allocator.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "./ThirdParty/stbi_image.h"
+#include "stb_image.h"
 
 typedef void(*gfx_shader_recompile_callback)(gfx_shader_handle handle);
 
@@ -141,7 +141,7 @@ int32_t draw_pass_count;
 gfx_log_callback gfx_log;
 shader_change_callback shader_change;
 
-char log_buffer[LOG_BUFFER_SIZE];
+static char log_buffer[LOG_BUFFER_SIZE];
 
 
 #define SHADER_CHANGE_CALLBACK(shader) if(shader_change != 0) shader_change(shader);
@@ -165,7 +165,7 @@ void uniform_set_i4(uint32_t id, void* buffer){glUniform4i(id, *(int*)buffer, *(
 void uniform_set_m2(uint32_t id, void* buffer){glUniformMatrix2fv(id, 1, 1, (float*)buffer);}
 void uniform_set_m3(uint32_t id, void* buffer){glUniformMatrix3fv(id, 1, 1, (float*)buffer);}
 void uniform_set_m4(uint32_t id, void* buffer){glUniformMatrix4fv(id, 1, 1, (float*)(buffer));}
-void uniform_set_sampler(uint32_t id, void* buffer){ glBindSampler(id, *(int32_t*)buffer); };
+void uniform_set_sampler(uint32_t id, void* buffer){ glUniform1i(id, *(int32_t*)buffer); };
 void uniform_set_texture(uint32_t id, void* buffer){ glBindTexture(id, *(int32_t*)buffer); };
 
 bool gfx_init() {
@@ -320,6 +320,8 @@ void gfx_get_uniform_setter(void(**uniform_setter)(uint32_t index, void* data), 
         case GFX_TYPE_INTEGER_VEC_4: *uniform_setter = uniform_set_i4; break;
         case GFX_TYPE_FLOAT_MAT_3: *uniform_setter = uniform_set_m3; break;
         case GFX_TYPE_FLOAT_MAT_4: *uniform_setter = uniform_set_m4; break;
+        case GFX_TYPE_SAMPLER_CUBE: *uniform_setter = uniform_set_sampler; break;
+        case GFX_TYPE_TEXTURE: *uniform_setter = uniform_set_texture; break;
         default: *uniform_setter = 0;
     }
 }
@@ -806,11 +808,13 @@ void gfx_pipeline_destroy(gfx_pipeline_handle handle) {
     OS_FREE(handle);
 }
 
-void gfx_shader_uniform_set(gfx_shader_handle handle, uint32_t uniform_index, void* data) {
+void gfx_shader_uniform_set(gfx_shader_handle handle, int32_t uniform_index, void* data) {
     if(handle->status == GFX_RESOURCE_ACTIVE) {
-        if (uniform_index != -1) {
+        if (uniform_index >= 0 && uniform_index < handle->uniform_count) {
             struct gfx_shader_uniform uni = handle->uniforms[uniform_index];
-            uni.uniform_setter(uni.id, data);
+            if (uni.uniform_setter != 0) {
+                uni.uniform_setter(uni.id, data);
+            }
         }
     }
 }
@@ -847,6 +851,11 @@ void gfx_blend_enable(bool state) {
     else glDisable(GL_BLEND);
 }
 
+void gfx_cull_enable(bool state) {
+    if(state) glEnable(GL_CULL_FACE);
+    else glDisable(GL_CULL_FACE);
+}
+
 /*
  * Framebuffer
  */
@@ -869,6 +878,8 @@ gfx_framebuffer_handle gfx_framebuffer_create(gfx_texture_handle color_texture, 
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
         handle->status = GFX_RESOURCE_ACTIVE;
+        handle->width = color_texture ? color_texture->width : 0;
+        handle->height = color_texture ? color_texture->height : 0;
         LOGG("Fbo created\n");
     }
     else {
@@ -1032,10 +1043,19 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
 
     int32_t tex_type_src, tex_type_dest, format;
     gfx_texture_gl_get_type(type, &tex_type_src, &tex_type_dest, &format);
+    unsigned char fallback_faces[6][3] = {
+            {120, 160, 220},
+            {120, 160, 220},
+            {180, 205, 235},
+            {70, 75, 80},
+            {105, 135, 190},
+            {105, 135, 190}
+    };
+    bool used_fallback = false;
 
     for(int32_t i = 0; i < 6; i++) {
-        int32_t width, height, ch;
-        void *src;
+        int32_t width = 1, height = 1, ch = 3;
+        void *src = 0;
 
         char buffer[MAXIMUM_PATH_LENGTH];
         sprintf(buffer, "%s%s", path, names[i]);
@@ -1043,6 +1063,8 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
 
         if(src == 0) {
             LOG_ERROR("Cubemap load fail, side %i, path: %s\n", i, buffer);
+            src = fallback_faces[i];
+            used_fallback = true;
         }
 
         glTexImage2D(
@@ -1051,10 +1073,16 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
                 src
         );
 
-        stbi_image_free(src);
+        if(!used_fallback || src != fallback_faces[i]) {
+            stbi_image_free(src);
+        }
     }
 
-    LOG("Cubemap loaded, path: %s\n", path);
+    if(used_fallback) {
+        LOG("Cubemap fallback used for path: %s\n", path);
+    } else {
+        LOG("Cubemap loaded, path: %s\n", path);
+    }
 
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1086,6 +1114,7 @@ void gfx_texture_destroy(gfx_texture_handle hndl) {
 }
 
 void gfx_texture_cubemap_bind(gfx_texture_cubemap_handle hndl) {
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_CUBE_MAP, hndl->texture.id);
 }
 

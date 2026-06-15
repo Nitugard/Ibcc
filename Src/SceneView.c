@@ -49,7 +49,7 @@ typedef struct scene_view{
     enum scene_view_type view_type;
 } scene_view;
 
-float color[4] = {0.24, 0.24, 0.24, 1};
+static float color[4] = {0.24, 0.24, 0.24, 1};
 
 void scene_view_controller_update_projection(scene_view_handle handle) {
 
@@ -241,7 +241,7 @@ void scene_view_render_get(scene_view_handle handle, int32_t* color, int32_t* de
 }
 
 void scene_view_resize(scene_view_handle handle, int32_t w, int32_t h) {
-    if (handle->width != w && handle->height != h) {
+    if (handle->width != w || handle->height != h) {
 
         handle->width = w;
         handle->height = h;

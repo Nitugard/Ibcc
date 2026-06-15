@@ -11,7 +11,10 @@
 #include <GLFW/glfw3.h>
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+#define CIMGUI_USE_GLFW
+#define CIMGUI_USE_OPENGL3
 #include <cimgui.h>
+#include <cimgui_impl.h>
 #include "Device.h"
 
 struct ImGuiContext* ctx;
@@ -20,6 +23,7 @@ struct ImGuiIO* io;
 void gui_init() {
     ctx = igCreateContext(NULL);
     io = igGetIO();
+    io->IniFilename = NULL;
 
     const char *glsl_version = "#version 330 core";
     ImGui_ImplGlfw_InitForOpenGL(device_window_handle(), true);

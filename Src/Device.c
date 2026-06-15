@@ -37,7 +37,7 @@ typedef struct device_data {
 device_handle active_device;
 device_log_callback device_log;
 
-char log_buffer[LOG_BUFFER_SIZE];
+static char log_buffer[LOG_BUFFER_SIZE];
 
 #define LOG_ERROR(format, ...) if(device_log != 0) { sprintf(log_buffer, format, __VA_ARGS__); device_log(log_buffer, true);}
 #define LOG(format, ...)  if(device_log != 0) { sprintf(log_buffer, format, __VA_ARGS__); device_log(log_buffer, false);}
@@ -178,7 +178,7 @@ bool device_init(int32_t version_major, int32_t version_minor) {
 
     LOG("Device initialized: %s\n", glfwGetVersionString());
 
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, version_major);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, version_minor);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
@@ -243,8 +243,7 @@ device_handle device_new(const char* name, int32_t width, int32_t height, bool v
     os_memset(handle, 0, sizeof(device_data));
 
     handle->win_h = window;
-    handle->width = width;
-    handle->height = height;
+    glfwGetFramebufferSize(window, &handle->width, &handle->height);
 
     LOGG("Device created\n");
     return handle;
@@ -303,6 +302,7 @@ double device_time_get() {
 }
 
 void device_window_dimensions_get(int32_t *width, int32_t *height) {
+    glfwGetFramebufferSize(active_device->win_h, &active_device->width, &active_device->height);
     *width = active_device->width;
     *height = active_device->height;
 }
@@ -353,10 +353,10 @@ void* device_file_read_text(const char* path){
     void* file = device_file_open(path, "r");
     int32_t size;
     device_file_size(file, &size);
+    LOG("Loading FILE %s", path);
     char* buffer = OS_MALLOC((size+1) * sizeof(char));
     int32_t new_len = device_file_read(file, 0, size, buffer);
     buffer[new_len] = '\0';
     device_file_close(file);
     return buffer;
 }
-

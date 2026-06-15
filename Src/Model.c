@@ -12,7 +12,7 @@
 #include "GlMath.h"
 
 #define CGLTF_IMPLEMENTATION
-#include "ThirdParty/cgltf.h"
+#include "cgltf.h"
 
 #ifndef CORE_ASSERT
 #include "assert.h"
@@ -30,7 +30,7 @@
 
 
 mdl_handle mdl_load(const char* path) {
-    bool verbose = true;
+    bool verbose = false;
 
     printf("Loading model %s\n", path);
 
@@ -65,7 +65,7 @@ mdl_handle mdl_load(const char* path) {
      * Loading of the nodes.
      */
 
-    if (verbose) printf("- Nodes count: %i\n", data->nodes_count);
+    if (verbose) printf("- Nodes count: %llu\n", (unsigned long long)data->nodes_count);
 
     handle->nodes_count = data->nodes_count;
     handle->nodes = OS_MALLOC(sizeof(struct mdl_node) * data->nodes_count);
@@ -102,7 +102,7 @@ mdl_handle mdl_load(const char* path) {
         }
 
         //load children
-        if (verbose) printf("- - - Children count: %i\n", cnode->children_count);
+        if (verbose) printf("- - - Children count: %llu\n", (unsigned long long)cnode->children_count);
         node->children_count = cnode->children_count;
         if (cnode->children_count > 0) {
             node->children_id = OS_MALLOC(sizeof(uint32_t) * cnode->children_count);
@@ -193,7 +193,7 @@ mdl_handle mdl_load(const char* path) {
     handle->cameras = OS_MALLOC(sizeof(struct mdl_camera) * data->cameras_count);
     handle->cameras_count = data->cameras_count;
     os_memset(handle->cameras, 0, sizeof(struct mdl_camera) * data->cameras_count);
-    if (verbose) printf("- Cameras count: %i\n", data->cameras_count);
+    if (verbose) printf("- Cameras count: %llu\n", (unsigned long long)data->cameras_count);
 
     for (int32_t i = 0; i < data->cameras_count; ++i) {
         struct cgltf_camera *ccamera = data->cameras + i;
@@ -236,6 +236,8 @@ mdl_handle mdl_load(const char* path) {
                 printf("- - - XMag %f\n", camera->xmag);
                 printf("- - - YMag %f\n", camera->ymag);
                 break;
+            default:
+                break;
         }
     }
 
@@ -245,7 +247,7 @@ mdl_handle mdl_load(const char* path) {
     handle->lights = OS_MALLOC(sizeof(struct mdl_light) * data->lights_count);
     handle->lights_count = data->lights_count;
     os_memset(handle->lights, 0, sizeof(struct mdl_light) * data->lights_count);
-    if (verbose) printf("- Lights count: %i\n", data->lights_count);
+    if (verbose) printf("- Lights count: %llu\n", (unsigned long long)data->lights_count);
 
     for (int32_t i = 0; i < data->lights_count; ++i) {
         struct cgltf_light *clight = data->lights + i;
@@ -278,6 +280,8 @@ mdl_handle mdl_load(const char* path) {
                 light->light_type = MDL_LIGHT_INVALID;
                 printf("- - - Spot light is not supoorted\n");
                 break;
+            default:
+                break;
         }
 
         printf("- - - Light color %f %f %f\n", light->color[0], light->color[1], light->color[2]);
@@ -292,7 +296,7 @@ mdl_handle mdl_load(const char* path) {
     handle->meshes = OS_MALLOC(sizeof(struct mdl_mesh) * data->meshes_count);
     handle->meshes_count = data->meshes_count;
     os_memset(handle->meshes, 0, sizeof(struct mdl_mesh) * data->meshes_count);
-    if (verbose) printf("- Meshes count: %i\n", data->meshes_count);
+    if (verbose) printf("- Meshes count: %llu\n", (unsigned long long)data->meshes_count);
 
     for (int32_t i = 0; i < data->meshes_count; ++i) {
         cgltf_mesh *cmesh = data->meshes + i;
@@ -310,14 +314,14 @@ mdl_handle mdl_load(const char* path) {
         mesh->primitives = OS_MALLOC(cmesh->primitives_count * sizeof(struct mdl_primitive));
         mesh->primitives_count = cmesh->primitives_count;
 
-        if (verbose) printf("- - Primitives count: %i\n", cmesh->primitives_count);
+        if (verbose) printf("- - Primitives count: %llu\n", (unsigned long long)cmesh->primitives_count);
 
         for (int32_t j = 0; j < cmesh->primitives_count; ++j) {
             cgltf_primitive *cprimitive = cmesh->primitives + j;
             mdl_primitive *primitive = mesh->primitives + j;
             os_memset(primitive, 0, sizeof(mdl_primitive));
 
-            if (verbose) printf("- - - Primitive indices count: %i\n", cprimitive->indices->count);
+            if (verbose) printf("- - - Primitive indices count: %llu\n", (unsigned long long)cprimitive->indices->count);
             if (cprimitive->has_draco_mesh_compression) {
                 printf("- - - Draco mesh compression is not implemented!\n");
                 continue;
@@ -338,6 +342,9 @@ mdl_handle mdl_load(const char* path) {
                 case cgltf_primitive_type_triangle_strip:primitive->primitive_type = MDL_PRIMITIVE_TYPE_TRIANGLE_STRIP;
                     break;
                 case cgltf_primitive_type_triangle_fan:primitive->primitive_type = MDL_PRIMITIVE_TYPE_TRIANGLE_FAN;
+                    break;
+                default:
+                    primitive->primitive_type = MDL_PRIMITIVE_TYPE_TRIANGLES;
                     break;
             }
 
@@ -380,6 +387,9 @@ mdl_handle mdl_load(const char* path) {
                         break;
                     case cgltf_attribute_type_weights:attribute->type = MDL_VERTEX_ATTRIBUTE_WEIGHTS;
                         break;
+                    default:
+                        attribute->type = MDL_VERTEX_ATTRIBUTE_INVALID;
+                        break;
 
                 }
                 //Todo: user defined attributes(they start with underscore in gltf specification) but clgtf seems to generate invalid attribute for them??
@@ -405,6 +415,9 @@ mdl_handle mdl_load(const char* path) {
                     case cgltf_type_mat4: attribute->count = 16;
                         break;
                     case cgltf_type_mat2: attribute->count = 4;
+                        break;
+                    default:
+                        attribute->count = 0;
                         break;
                 }
 
@@ -454,7 +467,7 @@ mdl_handle mdl_load(const char* path) {
     handle->materials = OS_MALLOC(sizeof(struct mdl_material) * data->materials_count);
     handle->materials_count = data->materials_count;
     os_memset(handle->materials, 0, sizeof(struct mdl_material) * data->materials_count);
-    if (verbose) printf("- Materials count: %i\n", data->materials_count);
+    if (verbose) printf("- Materials count: %llu\n", (unsigned long long)data->materials_count);
 
     for (int32_t i = 0; i < data->materials_count; ++i) {
         cgltf_material *cmat = data->materials + i;

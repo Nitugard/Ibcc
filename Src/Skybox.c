@@ -24,6 +24,7 @@ typedef struct skybox_data {
     gfx_texture_cubemap_handle cubemap_texture;
     int32_t view_uniform;
     int32_t projection_uniform;
+    int32_t skybox_uniform;
     gfx_shader_handle shader;
 } skybox_data;
 
@@ -61,6 +62,7 @@ skybox_handle skybox_load(const char* path) {
 
     gfx_shader_uniform_enable(handle->shader, VIEW_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &handle->view_uniform);
     gfx_shader_uniform_enable(handle->shader, PROJECTION_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &handle->projection_uniform);
+    gfx_shader_uniform_enable(handle->shader, "skybox", GFX_TYPE_SAMPLER_CUBE, &handle->skybox_uniform);
 
     handle->pip = gfx_pipeline_create(handle->shader);
     gfx_pipeline_attr_enable(handle->pip, ATTR_POSITION_NAME, handle->buffer, 3, 0,
@@ -76,11 +78,15 @@ void skybox_bind(skybox_handle handle) {
 
 void skybox_render(skybox_handle handle, float projection[16], float view[16]) {
     CORE_ASSERT(handle != 0 && "Invalid skybox pointer");
+    gfx_cull_enable(false);
     gfx_pipeline_bind(handle->pip);
     gfx_texture_cubemap_bind(handle->cubemap_texture);
     gfx_shader_uniform_set(handle->shader, handle->view_uniform, view);
     gfx_shader_uniform_set(handle->shader, handle->projection_uniform, projection);
+    int32_t texture_unit = 0;
+    gfx_shader_uniform_set(handle->shader, handle->skybox_uniform, &texture_unit);
     gfx_draw(GFX_TRIANGLES, 0, 36);
+    gfx_cull_enable(true);
 }
 
 void skybox_destroy(skybox_handle handle) {
