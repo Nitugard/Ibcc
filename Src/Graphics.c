@@ -435,10 +435,13 @@ void gfx_shader_submit(gfx_shader_handle handle) {
     }
 
     if (compiled) {
-        int32_t count = 0;
+        int32_t count = handle->uniform_commands_count;
+        gfx_pipeline_uniform_command commands[MAXIMUM_UNIFORM_COMMANDS_PER_SHADER];
+        os_memcpy(commands, handle->uniform_commands, sizeof(commands));
+
         handle->uniform_commands_count = 0;
         for (int32_t i = 0; i < count; ++i) {
-            struct gfx_shader_uniform_command cmd = handle->uniform_commands[i];
+            struct gfx_shader_uniform_command cmd = commands[i];
             gfx_shader_uniform_enable(handle, cmd.name, cmd.type, cmd.reference_index);
         }
     }
@@ -635,18 +638,18 @@ int32_t gfx_end_pass() {
 void gfx_draw(gfx_draw_type type, int32_t start, int32_t length) {
     CORE_ASSERT(draw_pass_count != 0 && "Drawing while no draw pass is active");
 
-    gfx_draw_pass pass = draw_pass_array[draw_pass_count-1];
+    gfx_draw_pass *pass = &draw_pass_array[draw_pass_count - 1];
     glDrawArrays(type, start, length);
-    pass.draw_calls++;
+    pass->draw_calls++;
 }
 
 void gfx_draw_id(gfx_draw_type type, int32_t length)
 {
     CORE_ASSERT(draw_pass_count != 0 && "Drawing while no draw pass is active");
 
-    gfx_draw_pass pass = draw_pass_array[draw_pass_count-1];
+    gfx_draw_pass *pass = &draw_pass_array[draw_pass_count - 1];
     glDrawElements(type, length, GL_UNSIGNED_INT, 0);
-    pass.draw_calls++;
+    pass->draw_calls++;
 }
 
 void gfx_viewport_set(int32_t width, int32_t height) {
@@ -782,7 +785,7 @@ void gfx_pipeline_reload(gfx_pipeline_handle handle) {
     LOG("Pipeline reloaded, shader: %s", handle->shader_handle->name);
     CORE_ASSERT(handle->status != GFX_RESOURCE_DESTROYED);
     glDeleteVertexArrays(1, &handle->vao_id);
-    glCreateVertexArrays(1, &handle->vao_id);
+    glGenVertexArrays(1, &handle->vao_id);
     handle->ebo_id = GL_INVALID_INDEX;
     handle->status = GFX_RESOURCE_CREATED;
 }
@@ -826,13 +829,13 @@ void gfx_shader_uniform_set(gfx_shader_handle handle, int32_t uniform_index, voi
 uint32_t gfx_blend_type_to_gl(gfx_blend_type type) {
     switch (type) {
 
-        case GFX_BLEND_SRC_ALPHA: return GL_BLEND_SRC_ALPHA;
+        case GFX_BLEND_SRC_ALPHA: return GL_SRC_ALPHA;
         case GFX_BLEND_ONE_MINUS_SRC_ALPHA: return GL_ONE_MINUS_SRC_ALPHA;
         case GFX_BLEND_SRC_COLOR: return GL_SRC_COLOR;
         case GFX_BLEND_ONE_MINUS_SRC_COLOR: return GL_ONE_MINUS_SRC_COLOR;
         case GFX_BLEND_ONE: return GL_ONE;
         case GFX_BLEND_ZERO: return GL_ZERO;
-        case GFX_BLEND_DEST_ALPHA: return GL_BLEND_DST_ALPHA;
+        case GFX_BLEND_DEST_ALPHA: return GL_DST_ALPHA;
         case GFX_BLEND_ONE_MINUS_DEST_ALPHA: return GL_ONE_MINUS_DST_ALPHA;
         case GFX_BLEND_DEST_COLOR: return GL_DST_COLOR;
         case GFX_BLEND_ONE_MINUS_DEST_COLOR: return GL_ONE_MINUS_DST_COLOR;

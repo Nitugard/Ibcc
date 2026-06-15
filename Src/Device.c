@@ -95,12 +95,19 @@ void device_joystick_update() {
     active_device->joystick.pointer.scroll_y = 0;
 
 
-    active_device->joystick.mouse.lmb_press = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    active_device->joystick.mouse.rmb_press = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    active_device->joystick.mouse.mmb_press = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
-    active_device->joystick.mouse.lmb_release = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE;
-    active_device->joystick.mouse.rmb_release = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_RELEASE;
-    active_device->joystick.mouse.mmb_release = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_RELEASE;
+    bool lmb_down = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    bool rmb_down = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    bool mmb_down = glfwGetMouseButton(active_device->win_h, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+
+    active_device->joystick.mouse.lmb_press = lmb_down && !active_device->joystick.mouse.lmb_down;
+    active_device->joystick.mouse.rmb_press = rmb_down && !active_device->joystick.mouse.rmb_down;
+    active_device->joystick.mouse.mmb_press = mmb_down && !active_device->joystick.mouse.mmb_down;
+    active_device->joystick.mouse.lmb_release = !lmb_down && active_device->joystick.mouse.lmb_down;
+    active_device->joystick.mouse.rmb_release = !rmb_down && active_device->joystick.mouse.rmb_down;
+    active_device->joystick.mouse.mmb_release = !mmb_down && active_device->joystick.mouse.mmb_down;
+    active_device->joystick.mouse.lmb_down = lmb_down;
+    active_device->joystick.mouse.rmb_down = rmb_down;
+    active_device->joystick.mouse.mmb_down = mmb_down;
 
 
     if (glfwGetKey(active_device->win_h, GLFW_KEY_W) == GLFW_PRESS)
@@ -152,16 +159,6 @@ void device_delta_time_update()
         active_device->time.dt = glfwGetTime() - active_device->time.t;
 
     active_device->time.t = glfwGetTime();
-}
-
-GLFWcursor *glfw_blank_cursor() {
-    unsigned char pixels[4];
-    os_memset(pixels, 0, sizeof(pixels));
-    GLFWimage image;
-    image.width = 1;
-    image.height = 1;
-    image.pixels = pixels;
-    return glfwCreateCursor(&image, 0, 0);
 }
 
 void device_log_callback_set(device_log_callback callback) {
@@ -280,11 +277,7 @@ void device_window_close() {
 }
 
 void device_window_cursor_set(bool centered, bool visible) {
-    if (!visible) {
-        glfwSetCursor(active_device->win_h, glfw_blank_cursor());
-    } else {
-        glfwSetCursor(active_device->win_h, NULL);
-    }
+    glfwSetInputMode(active_device->win_h, GLFW_CURSOR, visible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
     active_device->cursor_centered = centered;
     active_device->cursor_visible = visible;
 }
@@ -309,11 +302,10 @@ void device_window_dimensions_get(int32_t *width, int32_t *height) {
 
 void device_update_events() {
 
+    glfwPollEvents();
     device_delta_time_update();
     device_joystick_update();
     device_window_cursor_update();
-
-    glfwPollEvents();
 }
 
 
@@ -336,12 +328,14 @@ void device_file_size(device_file_handle handle, int32_t* size){
 
 int32_t device_file_read(device_file_handle handle, int32_t offset, int32_t length, void* buffer){
     CORE_ASSERT(handle != 0 && "File handle is invalid");
-    return fread(buffer, sizeof(char), length, handle);
+    fseek(handle, offset, SEEK_SET);
+    return fread(buffer, 1, length, handle);
 }
 
 void device_file_write(device_file_handle handle, int32_t offset, int32_t length, void const* buffer){
     CORE_ASSERT(handle != 0 && "File handle is invalid");
-    fwrite(buffer, offset, length, handle);
+    fseek(handle, offset, SEEK_SET);
+    fwrite(buffer, 1, length, handle);
 }
 
 void device_file_close(device_file_handle handle){
@@ -350,7 +344,8 @@ void device_file_close(device_file_handle handle){
 }
 
 void* device_file_read_text(const char* path){
-    void* file = device_file_open(path, "r");
+    void* file = device_file_open(path, "rb");
+    CORE_ASSERT(file != 0 && "File open failed");
     int32_t size;
     device_file_size(file, &size);
     LOG("Loading FILE %s", path);

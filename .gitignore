@@ -2,3 +2,4 @@ Src/ThirdParty/*
 Build/*
 .idea/*
 /cmake-build-codex
+.aicodeprep-gui

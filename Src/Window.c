@@ -182,7 +182,7 @@ void window_shader_editor(){
                         doc->dirty = true;
                     }
 
-                    if(doc->dirty) {
+                    if(doc->dirty && igButton("Apply", (ImVec2){100, 25})) {
                         gfx_shader_reload(doc->handle);
                         gfx_shader_add_vs(doc->handle, doc->buffer_vs);
                         gfx_shader_add_fs(doc->handle, doc->buffer_fs);
@@ -463,6 +463,8 @@ void window_run() {
 }
 
 void window_finalize(){
+    scene_view_destroy(views[0]);
+    scene_view_destroy(views[1]);
     scene_delete(active_scene);
     gui_finalize();
     gfx_terminate();

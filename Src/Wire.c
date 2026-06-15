@@ -167,10 +167,9 @@ void wire_clear_all(wire_handle handle) {
 }
 
 void wire_delete(wire_handle handle) {
-    gfx_shader_destroy(handle->list.shader);
-    gfx_buffer_destroy(handle->list.vertex_buffer);
     gfx_pipeline_destroy(handle->list.pip);
+    gfx_buffer_destroy(handle->list.vertex_buffer);
+    gfx_shader_destroy(handle->list.shader);
     OS_FREE(handle->list.buffer);
     OS_FREE(handle);
 }
-

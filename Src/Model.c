@@ -75,9 +75,13 @@ mdl_handle mdl_load(const char* path) {
         cgltf_node *cnode = data->nodes + i;
         mdl_node *node = handle->nodes + i;
         node->mesh_index = node->light_index = node->camera_index = -1;
-        node->name = OS_MALLOC(strlen(cnode->name) + 1);
-        os_memcpy(node->name, cnode->name, strlen(cnode->name) + 1);
-        if (verbose) printf("- - Loading node: %s\n", node->name);
+        if (cnode->name != 0) {
+            node->name = OS_MALLOC(strlen(cnode->name) + 1);
+            os_memcpy(node->name, cnode->name, strlen(cnode->name) + 1);
+        } else {
+            node->name = 0;
+        }
+        if (verbose) printf("- - Loading node: %s\n", node->name != 0 ? node->name : "<unnamed>");
 
         if (cnode->has_matrix) {
             fprintf(stderr, "- - - Matrix is currently not supported\n");
@@ -120,7 +124,7 @@ mdl_handle mdl_load(const char* path) {
                 }
                 else {
                     node->children_id[j] = child_index;
-                    if (verbose) printf("- - - - Added child: %s, index: %i\n", child_cnode->name, child_index);
+                    if (verbose) printf("- - - - Added child: %s, index: %i\n", child_cnode->name != 0 ? child_cnode->name : "<unnamed>", child_index);
                 }
             }
         }
@@ -135,7 +139,7 @@ mdl_handle mdl_load(const char* path) {
         }
 
         if(node->parent_id != -1) {
-            printf("- - - - Parent index: %i, name: %s\n", node->parent_id, data->nodes[node->parent_id].name);
+            printf("- - - - Parent index: %i, name: %s\n", node->parent_id, data->nodes[node->parent_id].name != 0 ? data->nodes[node->parent_id].name : "<unnamed>");
         }
 
         //associate node with mesh
@@ -150,7 +154,7 @@ mdl_handle mdl_load(const char* path) {
             if (mesh_index == -1) { printf("- - - Node mesh index could not be found!"); }
             else {
                 node->mesh_index = mesh_index;
-                if (verbose) printf("- - - Node mesh: %s, index: %i\n", cnode->mesh->name, mesh_index);
+                if (verbose) printf("- - - Node mesh: %s, index: %i\n", cnode->mesh->name != 0 ? cnode->mesh->name : "<unnamed>", mesh_index);
             }
         }
 
@@ -166,7 +170,7 @@ mdl_handle mdl_load(const char* path) {
             if (camera_index == -1) { printf("- - - Node camera index could not be found!"); }
             else {
                 node->camera_index = camera_index;
-                if (verbose) printf("- - - Node camera: %s, index: %i\n", cnode->camera->name, camera_index);
+                if (verbose) printf("- - - Node camera: %s, index: %i\n", cnode->camera->name != 0 ? cnode->camera->name : "<unnamed>", camera_index);
             }
         }
 
@@ -182,7 +186,7 @@ mdl_handle mdl_load(const char* path) {
             if (light_index == -1) { printf("- - - Node light index could not be found!"); }
             else {
                 node->light_index = light_index;
-                if (verbose) printf("- - - Node light: %s, index: %i\n", cnode->light->name, light_index);
+                if (verbose) printf("- - - Node light: %s, index: %i\n", cnode->light->name != 0 ? cnode->light->name : "<unnamed>", light_index);
             }
         }
     }
@@ -214,7 +218,7 @@ mdl_handle mdl_load(const char* path) {
             case cgltf_camera_type_perspective:
                 camera->ortographic = false;
                 printf("- - - Camera perspective\n");
-                camera->fov = ccamera->data.perspective.yfov;
+                camera->fov = gl_rad2deg(ccamera->data.perspective.yfov);
                 if(ccamera->data.perspective.has_zfar)
                     camera->zfar = ccamera->data.perspective.zfar;
                 else
@@ -321,7 +325,11 @@ mdl_handle mdl_load(const char* path) {
             mdl_primitive *primitive = mesh->primitives + j;
             os_memset(primitive, 0, sizeof(mdl_primitive));
 
-            if (verbose) printf("- - - Primitive indices count: %llu\n", (unsigned long long)cprimitive->indices->count);
+            if (verbose && cprimitive->indices != 0) {
+                printf("- - - Primitive indices count: %llu\n", (unsigned long long)cprimitive->indices->count);
+            } else if (verbose) {
+                printf("- - - Primitive has no indices; generating sequential indices\n");
+            }
             if (cprimitive->has_draco_mesh_compression) {
                 printf("- - - Draco mesh compression is not implemented!\n");
                 continue;
@@ -348,17 +356,18 @@ mdl_handle mdl_load(const char* path) {
                     break;
             }
 
-            cgltf_accessor *indices_accessor = cprimitive->indices;
-            if (indices_accessor->type != cgltf_type_scalar) {
-                printf("- - - Primitive indices must be scalar");
-                continue;
-            }
+            if (cprimitive->indices != 0) {
+                cgltf_accessor *indices_accessor = cprimitive->indices;
+                if (indices_accessor->type != cgltf_type_scalar) {
+                    printf("- - - Primitive indices must be scalar; generating sequential indices\n");
+                } else {
+                    primitive->indices_count = indices_accessor->count;
+                    primitive->indices = OS_MALLOC(sizeof(uint32_t) * indices_accessor->count);
 
-            primitive->indices_count = indices_accessor->count;
-            primitive->indices = OS_MALLOC(sizeof(uint32_t) * indices_accessor->count);
-
-            for (int32_t k = 0; k < indices_accessor->count; ++k) {
-                primitive->indices[k] = cgltf_accessor_read_index(indices_accessor, k);
+                    for (int32_t k = 0; k < indices_accessor->count; ++k) {
+                        primitive->indices[k] = cgltf_accessor_read_index(indices_accessor, k);
+                    }
+                }
             }
 
             primitive->attributes_count = cprimitive->attributes_count;
@@ -443,10 +452,18 @@ mdl_handle mdl_load(const char* path) {
                 }
             }
 
+            if (primitive->indices == 0) {
+                primitive->indices_count = primitive->vertices_count;
+                primitive->indices = OS_MALLOC(sizeof(uint32_t) * primitive->indices_count);
+                for (int32_t k = 0; k < primitive->indices_count; ++k) {
+                    primitive->indices[k] = k;
+                }
+            }
+
             //associate material
-            uint32_t material_id = -1;
+            int32_t material_id = -1;
             if (cprimitive->material != 0) {
-                for (uint32_t k = 0; k < data->materials_count; ++k) {
+                for (int32_t k = 0; k < data->materials_count; ++k) {
                     cgltf_material *mat = data->materials + k;
                     if (mat == cprimitive->material) {
                         material_id = k;
@@ -464,9 +481,20 @@ mdl_handle mdl_load(const char* path) {
     /*
      * Loading of the materials.
      */
-    handle->materials = OS_MALLOC(sizeof(struct mdl_material) * data->materials_count);
-    handle->materials_count = data->materials_count;
-    os_memset(handle->materials, 0, sizeof(struct mdl_material) * data->materials_count);
+    handle->materials_count = data->materials_count > 0 ? data->materials_count : 1;
+    handle->materials = OS_MALLOC(sizeof(struct mdl_material) * handle->materials_count);
+    os_memset(handle->materials, 0, sizeof(struct mdl_material) * handle->materials_count);
+    if (data->materials_count == 0) {
+        mdl_material *mat = handle->materials;
+        mat->valid = true;
+        mat->color_texture_id = -1;
+        mat->color_factor[0] = 0.8f;
+        mat->color_factor[1] = 0.8f;
+        mat->color_factor[2] = 0.8f;
+        mat->color_factor[3] = 1.0f;
+        mat->roughness_factor = 0.6f;
+        mat->metallic_factor = 0.0f;
+    }
     if (verbose) printf("- Materials count: %llu\n", (unsigned long long)data->materials_count);
 
     for (int32_t i = 0; i < data->materials_count; ++i) {

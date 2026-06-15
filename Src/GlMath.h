@@ -172,7 +172,7 @@ API gl_vec3 gl_vec3_cross(gl_vec3 a, gl_vec3 b);
 API gl_t gl_vec3_angle(gl_vec3 a, gl_vec3 b);
 API gl_vec3 gl_vec3_normalize(gl_vec3 a);
 API gl_t gl_vec3_norm(gl_vec3 a);
-API gl_vec3 gl_vec3_norm_squared(gl_vec3 a);
+API gl_t gl_vec3_norm_squared(gl_vec3 a);
 API gl_t gl_vec3_dot(gl_vec3 a, gl_vec3 b);
 
 API gl_vec3 gl_vec3_add(gl_vec3 a, gl_vec3 b);
@@ -224,8 +224,10 @@ API gl_mat gl_mat_op_cumm_variadic(gl_mat(*op)(gl_mat const, gl_mat const), int3
 
 
 API gl_vec4 gl_quat_from_axis_angle(gl_vec3 axis, float angle);
+API gl_vec3 gl_quat_to_euler_rad(gl_vec4 q);
+API gl_vec4 gl_euler_deg_to_quat(gl_vec3 euler);
 API gl_vec3 gl_quat_to_euler_angle(gl_vec4 q);
-API gl_vec4 gl_euler_to_angle_quat(gl_vec3 euler) ;
+API gl_vec4 gl_euler_to_angle_quat(gl_vec3 euler);
 API gl_vec4 gl_quat_conjugate(gl_vec4 q);
 API gl_vec4 gl_quat_normalize(gl_vec4 q);
 API gl_vec4 gl_quat_mul(gl_vec4 q1, gl_vec4 q2);

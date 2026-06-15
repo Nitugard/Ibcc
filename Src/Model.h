@@ -108,7 +108,7 @@ typedef struct mdl_primitive {
     uint32_t *indices;
 
     uint32_t vertex_stride;
-    uint32_t material_id;
+    int32_t material_id;
 }mdl_primitive;
 
 typedef struct mdl_mesh

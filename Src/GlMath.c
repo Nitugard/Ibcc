@@ -137,6 +137,7 @@ gl_t gl_vec_norm(gl_t const *a, int32_t count) {
 
 void gl_vec_normalize(gl_t *a, int32_t count) {
     gl_t norm = gl_vec_norm(a, count);
+    if (norm == 0) return;
     gl_t rcp = 1.0f / norm;
     for (int32_t i = 0; i < count; ++i) a[i] = a[i]*rcp;
 }
@@ -154,9 +155,8 @@ gl_t gl_vec3_norm(gl_vec3 a){
     return gl_vec_norm(a.data, 3);
 }
 
-gl_vec3 gl_vec3_norm_squared(gl_vec3 a){
-    gl_vec_norm_squared(a.data, 3);
-    return a;
+gl_t gl_vec3_norm_squared(gl_vec3 a){
+    return gl_vec_norm_squared(a.data, 3);
 }
 
 gl_t gl_vec3_dot(gl_vec3 a, gl_vec3 b)
@@ -180,8 +180,11 @@ gl_vec3 gl_vec3_cross(gl_vec3 a, gl_vec3 b) {
 }
 
 gl_t gl_vec3_angle(gl_vec3 a, gl_vec3 b) {
-    return gl_acos((gl_vec_dot(a.data, b.data, 3) /
-                          (gl_vec_norm(a.data, 3) * gl_vec_norm(b.data, 3))));
+    gl_t norm = gl_vec_norm(a.data, 3) * gl_vec_norm(b.data, 3);
+    if (norm == 0) return 0;
+    gl_t c = gl_vec_dot(a.data, b.data, 3) / norm;
+    c = gl_clamp(c, -1.0f, 1.0f);
+    return gl_acos(c);
 }
 
 gl_mat gl_mat_translate(gl_vec3 pos) {
@@ -580,7 +583,7 @@ gl_vec3 gl_vec3_negate(gl_vec3 a) {
     return result;
 }
 
-gl_vec3 gl_quat_to_euler_angle(gl_vec4 q) {
+gl_vec3 gl_quat_to_euler_rad(gl_vec4 q) {
     gl_t sqw = q.w * q.w;
     gl_t sqx = q.x * q.x;
     gl_t sqy = q.y * q.y;
@@ -605,7 +608,7 @@ gl_vec3 gl_quat_to_euler_angle(gl_vec4 q) {
     return gl_vec3_new(x, y, z);
 }
 
-gl_vec4 gl_euler_to_angle_quat(gl_vec3 euler) {
+gl_vec4 gl_euler_deg_to_quat(gl_vec3 euler) {
     gl_array_op(gl_deg2rad, 3, &euler.data[0]);
     gl_t c1 = gl_cos(euler.y / 2);
     gl_t s1 = gl_sin(euler.y / 2);
@@ -621,6 +624,15 @@ gl_vec4 gl_euler_to_angle_quat(gl_vec3 euler) {
     gl_t z = c1 * s2 * c3 - s1 * c2 * s3;
     return gl_vec4_new(x, y, z, w);
 }
+
+gl_vec3 gl_quat_to_euler_angle(gl_vec4 q) {
+    return gl_quat_to_euler_rad(q);
+}
+
+gl_vec4 gl_euler_to_angle_quat(gl_vec3 euler) {
+    return gl_euler_deg_to_quat(euler);
+}
+
 gl_vec4 gl_quat_conjugate(gl_vec4 q) {
     q.x = -q.x;
     q.y = -q.y;
@@ -630,6 +642,7 @@ gl_vec4 gl_quat_conjugate(gl_vec4 q) {
 }
 gl_vec4 gl_quat_normalize(gl_vec4 q){
     gl_t n = gl_sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+    if (n == 0) return gl_vec4_new(0, 0, 0, 1);
     q.x /= n;
     q.y /= n;
     q.z /= n;

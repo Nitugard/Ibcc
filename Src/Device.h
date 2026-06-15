@@ -48,9 +48,9 @@ typedef struct device_joystick_axis {
 } device_joystick_axis;
 
 typedef struct device_mouse_state{
-    bool lmb_press, lmb_release;
-    bool rmb_press, rmb_release;
-    bool mmb_press, mmb_release;
+    bool lmb_press, lmb_release, lmb_down;
+    bool rmb_press, rmb_release, rmb_down;
+    bool mmb_press, mmb_release, mmb_down;
 } device_mouse_state;
 
 typedef struct device_joystick {

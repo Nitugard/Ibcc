@@ -148,7 +148,7 @@ void scene_view_update_controller(scene_view_handle handle) {
     if (gl_abs(joystick.pointer.dy) > DELTA_EPSILON ||
         gl_abs(joystick.pointer.dx) > DELTA_EPSILON) {
 
-        if (joystick.mouse.rmb_press) {
+        if (joystick.mouse.rmb_down) {
 
             float new_jaw = (handle->controller.jaw + joystick.pointer.dy * dt * handle->controller.rot_speed);
             float new_pitch = (handle->controller.pitch + joystick.pointer.dx * dt * handle->controller.rot_speed);
@@ -158,7 +158,7 @@ void scene_view_update_controller(scene_view_handle handle) {
             has_changed_position = true;
         }
 
-        if (joystick.mouse.mmb_press) {
+        if (joystick.mouse.mmb_down) {
             gl_vec3 move = gl_vec3_new(-joystick.pointer.dx * dt,
                                        joystick.pointer.dy * dt, 0);
             handle->controller.offset = gl_vec3_add(handle->controller.offset,
@@ -167,11 +167,11 @@ void scene_view_update_controller(scene_view_handle handle) {
         }
     }
 
-    if (gl_abs(joystick.pointer.scroll_y) > DELTA_EPSILON) {
+    if (gl_abs(joystick.pointer.scroll_dy) > DELTA_EPSILON) {
         if (handle->view_type == SCENE_VIEW_PERSPECTIVE) {
-            handle->controller.distance += joystick.pointer.scroll_y * dt * handle->controller.move_speed;
+            handle->controller.distance += joystick.pointer.scroll_dy * dt * handle->controller.move_speed;
             if (handle->controller.distance < DELTA_EPSILON) {
-                gl_vec3 move = gl_vec3_new(0, 0, joystick.pointer.scroll_y * dt * handle->controller.move_speed);
+                gl_vec3 move = gl_vec3_new(0, 0, joystick.pointer.scroll_dy * dt * handle->controller.move_speed);
                 handle->controller.offset = gl_vec3_add(handle->controller.offset,
                                                         gl_mat_mul_vec(handle->controller.rotation, move));
 
@@ -181,7 +181,7 @@ void scene_view_update_controller(scene_view_handle handle) {
             has_changed_position = true;
         }
         else {
-            handle->controller.fov += joystick.pointer.scroll_y * dt * handle->controller.move_speed * 3;
+            handle->controller.fov += joystick.pointer.scroll_dy * dt * handle->controller.move_speed * 3;
             if (handle->controller.fov < DELTA_EPSILON) {
                 handle->controller.fov = DELTA_EPSILON;
             }
@@ -264,6 +264,7 @@ void scene_view_get_size(scene_view_handle handle, int32_t* width, int32_t* heig
 }
 
 void scene_view_destroy(scene_view_handle handle){
+    wire_delete(handle->wire);
     gfx_texture_destroy(handle->depth_tex);
     gfx_texture_destroy(handle->color_tex);
     gfx_framebuffer_destroy(handle->fbo);

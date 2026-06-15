@@ -243,7 +243,7 @@ scene_handle scene_new(scene_desc const* desc) {
         camera->fov = m_cam->fov;
         camera->ar = (float)w / h;
         if (!camera->ortographic) {
-            camera->projection = gl_mat_perspective(camera->fov * 100, camera->ar, camera->znear,
+            camera->projection = gl_mat_perspective(camera->fov, camera->ar, camera->znear,
                                                     camera->zfar);
         } else {
             camera->projection = gl_mat_ortographic(-camera->fov, camera->fov, -camera->fov / camera->ar,
@@ -302,7 +302,7 @@ scene_handle scene_new(scene_desc const* desc) {
         mesh->primitives_count = m_mesh->primitives_count;
         mesh->primitives = OS_MALLOC(sizeof(scene_internal_mesh_primitive) * m_mesh->primitives_count);
         for (uint32_t j = 0; j < m_mesh->primitives_count; ++j) {
-            if(m_mesh->primitives[j].material_id == -1)
+            if(m_mesh->primitives[j].material_id < 0 || m_mesh->primitives[j].material_id >= handle->materials_count)
                 m_mesh->primitives[j].material_id = 0;
 
             mesh->primitives[j] = scene_new_primitive(handle->materials[m_mesh->primitives[j].material_id].shader, m_mesh->primitives[j]);
@@ -324,7 +324,12 @@ scene_handle scene_new(scene_desc const* desc) {
         mdl_node *m_node = model->nodes + i;
         node->children_count = m_node->children_count;
         node->children_id = OS_MALLOC(sizeof(int32_t) * m_node->children_count);
-        node->name = OS_MALLOC(sizeof(char) * (strlen(m_node->name) + 1));
+        if (m_node->name != 0) {
+            node->name = OS_MALLOC(sizeof(char) * (strlen(m_node->name) + 1));
+            os_memcpy(node->name, m_node->name, sizeof(char) * (strlen(m_node->name) + 1));
+        } else {
+            node->name = 0;
+        }
         node->parent_id = m_node->parent_id;
         node->local_id = i;
 
@@ -364,7 +369,6 @@ scene_handle scene_new(scene_desc const* desc) {
         if (node->camera_index != -1)
             handle->active_camera_node = i;
 
-        os_memcpy(node->name, m_node->name, sizeof(char) * (strlen(m_node->name) + 1));
         os_memcpy(node->children_id, m_node->children_id, sizeof(int32_t) * m_node->children_count);
     }
 
