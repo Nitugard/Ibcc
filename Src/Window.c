@@ -25,18 +25,6 @@
 
 #define MAXIMUM_WINDOW_LOGS 1024
 
-typedef struct window_shader_document{
-    gfx_shader_handle handle;
-    char* name;
-    char* buffer_vs;
-    char* buffer_fs;
-    bool open;
-    bool dirty;
-    bool want_close;
-    bool open_prev;
-    size_t buffer_length;
-} window_shader_document;
-
 typedef struct window_log_data{
     char* log;
     time_t time;
@@ -46,7 +34,6 @@ typedef struct window_log_data{
 window_log_data logs[MAXIMUM_WINDOW_LOGS];
 int32_t logs_count;
 
-window_shader_document shaders[MAXIMUM_LOADED_SHADERS];
 scene_view_handle views[2];
 
 scene_handle active_scene;
@@ -69,37 +56,9 @@ static window_project_info project_info = {
     .faculty_name  = "Masinski Fakultet",
 };
 
-static float frame_dt      = 0.0f;
-static bool  show_dev_tools = false;
+static float frame_dt = 0.0f;
 
 float bg_color[4] = {0.09f, 0.09f, 0.12f, 1.0f};
-
-bool window_shader_find(gfx_shader_handle handle, int32_t* index) {
-    *index = -1;
-    for (int32_t i = 0; i < MAXIMUM_LOADED_SHADERS; ++i) {
-        if(shaders[i].handle == 0 && *index == -1)
-            *index = i;
-        if (shaders[i].handle == handle) {
-            *index = i;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool window_shader_find_by_name(gfx_shader_handle handle, int32_t* index) {
-    for (int32_t i = 0; i < MAXIMUM_LOADED_SHADERS; ++i) {
-        char* n1, *n2;
-        gfx_shader_name_get(shaders[i].handle, &n1);
-        gfx_shader_name_get(handle, &n2);
-
-        if (strcmp(n1, n2) == 0) {
-            *index = i;
-            return true;
-        }
-    }
-    return false;
-}
 
 void window_on_gfx_log(char const* log, bool error) {
     if (logs_count == MAXIMUM_WINDOW_LOGS) {
@@ -115,108 +74,8 @@ void window_on_gfx_log(char const* log, bool error) {
     logs_count++;
 }
 
-void window_on_shader_change(gfx_shader_handle handle){
-
-    switch (gfx_shader_status(handle)) {
-        case GFX_RESOURCE_INVALID:
-            break;
-        case GFX_RESOURCE_DESTROYED: {
-            int32_t index;
-            if(window_shader_find(handle, &index)) {
-                shaders[index].handle = 0;
-                shaders[index].want_close = true;
-                OS_FREE(shaders[index].buffer_vs);
-                OS_FREE(shaders[index].buffer_fs);
-            }
-        }
-            break;
-        case GFX_RESOURCE_CREATED:
-            break;
-        case GFX_RESOURCE_ACTIVE: {
-            int32_t index;
-            if (!window_shader_find(handle, &index)) {
-
-                shaders[index].handle = handle;
-                shaders[index].want_close = false;
-                shaders[index].open = true;
-                shaders[index].open_prev = false;
-                shaders[index].dirty = false;
-
-                char *internal_buffer_vs, *internal_buffer_fs;
-                gfx_shader_vs_get(handle, &internal_buffer_vs);
-                gfx_shader_fs_get(handle, &internal_buffer_fs);
-                gfx_shader_name_get(handle, &shaders[index].name);
-
-                shaders[index].buffer_vs = OS_MALLOC(1024 * 1024);
-                shaders[index].buffer_fs = OS_MALLOC(1024 * 1024);
-                shaders[index].buffer_length = 1024 * 1024;
-
-                os_memcpy(shaders[index].buffer_vs, internal_buffer_vs, strlen(internal_buffer_vs) + 1);
-                os_memcpy(shaders[index].buffer_fs, internal_buffer_fs, strlen(internal_buffer_fs) + 1);
-            }
-        }
-            break;
-    }
-}
-
-int window_shader_editor_callback(struct ImGuiInputTextCallbackData* data) {
-    return 0;
-}
-
 void window_scene_views_mark_as_dirty(){
     if (views[0]) scene_view_flag_dirty(views[0]);
-}
-
-void window_shader_editor(){
-    int32_t width, height;
-    device_window_dimensions_get(&width, &height);
-    igSetNextWindowPos((ImVec2){8, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
-    igSetNextWindowSize((ImVec2){width * 0.58f, height * 0.36f}, ImGuiCond_FirstUseEver);
-    igBegin("Shader Editor", 0, 0);
-    char name_buffer[1024];
-    if(igBeginTabBar("##tabs", ImGuiTabBarFlags_Reorderable)) {
-        for (int32_t i = 0; i < MAXIMUM_LOADED_SHADERS; ++i) {
-            struct window_shader_document *doc = shaders + i;
-            if (doc->handle != 0 && doc->open) {
-                sprintf(name_buffer, "[%i] %s", i, doc->name);
-                ImGuiTabItemFlags_ flags = doc->dirty ? (ImGuiTabItemFlags_UnsavedDocument | ImGuiTabItemFlags_NoCloseButton): ImGuiTabItemFlags_NoCloseButton;
-                bool visible = igBeginTabItem(name_buffer, &doc->open, flags);
-
-                if(!doc->open && doc->dirty) {
-                    doc->open = true;
-                    doc->want_close = true;
-                }
-
-
-                if (visible) {
-                    if(igInputTextMultiline("##FragShader", doc->buffer_fs, doc->buffer_length, (struct ImVec2) {igGetWindowWidth()/2, igGetWindowHeight() }, ImGuiInputTextFlags_Multiline |ImGuiInputTextFlags_AutoSelectAll,
-                                         0, &shaders[i])) {
-                        doc->dirty = true;
-                    }
-                    igSameLine(igGetWindowWidth()/2, 5);
-                    if(igInputTextMultiline("##VertShader", doc->buffer_vs, doc->buffer_length, (struct ImVec2) {igGetWindowWidth()/2, igGetWindowHeight() }, ImGuiInputTextFlags_Multiline |ImGuiInputTextFlags_AutoSelectAll,
-                                            0, &shaders[i])) {
-                        doc->dirty = true;
-                    }
-
-                    if(doc->dirty && igButton("Apply", (ImVec2){100, 25})) {
-                        gfx_shader_reload(doc->handle);
-                        gfx_shader_add_vs(doc->handle, doc->buffer_vs);
-                        gfx_shader_add_fs(doc->handle, doc->buffer_fs);
-                        gfx_shader_submit(doc->handle);
-                        doc->dirty = false;
-                        window_scene_views_mark_as_dirty();
-                    }
-
-                    igEndTabItem();
-                }
-            }
-        }
-
-        igEndTabBar();
-    }
-
-    igEnd();
 }
 
 void window_scene_view_create(){
@@ -338,10 +197,6 @@ void window_scene_view_draw(){
             igText("FPS: %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
         }
         igSeparator();
-
-        /* ---- Developer tools toggle ---- */
-        if (igButton(show_dev_tools ? "Sakrij alate" : "Dev alati", (ImVec2){-1.0f, 0.0f}))
-            show_dev_tools = !show_dev_tools;
 
         igEnd();
     }
@@ -559,10 +414,7 @@ void window_init(struct window_config const* config) {
     gfx_init();
     gui_init();
 
-    os_memset(shaders, 0, sizeof(struct window_shader_document) * MAXIMUM_LOADED_SHADERS);
-
     gfx_log_callback_set(window_on_gfx_log);
-    gfx_shader_status_change_callback_set(window_on_shader_change);
 
     model = mdl_load("./Data/Manipulator.gltf");
     scene_desc desc = {
@@ -595,15 +447,7 @@ void window_run() {
 
         window_scene_view_draw();
         window_manipulator_demo();
-
-        /*
-         * Developer tools are useful while debugging, but they distract
-         * during the final project demonstration.
-         */
-        if (show_dev_tools) {
-            window_shader_editor();
-            window_log();
-        }
+        window_log();
 
         int32_t width, height;
         device_window_dimensions_get(&width, &height);
