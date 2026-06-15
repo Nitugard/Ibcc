@@ -6,6 +6,7 @@
 
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -51,6 +52,9 @@ scene_view_handle views[2];
 scene_handle active_scene;
 mdl_handle model;
 device_handle device;
+
+static bool presentation_mode = true;
+static bool single_fullscreen_view_mode = true;
 
 float bg_color[4] = {0.12, 0.11, 0.12, 1.0f};
 
@@ -213,6 +217,40 @@ void window_scene_view_draw(){
     int32_t color;
     int32_t window_width, window_height;
     device_window_dimensions_get(&window_width, &window_height);
+
+    if (single_fullscreen_view_mode) {
+        igSetNextWindowPos((ImVec2){0, 0}, ImGuiCond_Always, (ImVec2){0, 0});
+        igSetNextWindowSize((ImVec2){window_width, window_height}, ImGuiCond_Always);
+
+        ImGuiWindowFlags_ flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+                                  | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
+                                  | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground
+                                  | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings;
+        igPushStyleVar_Vec2(ImGuiStyleVar_WindowPadding, (ImVec2){0, 0});
+        bool visible = igBegin(scene_view_get_name(views[0]), 0, flags);
+        if (visible) {
+            if (igIsWindowHovered(0)) {
+                scene_view_update_controller(views[0]);
+            }
+
+            ImVec2 size;
+            igGetWindowContentRegionMax(&size);
+            scene_view_resize(views[0], size.x, size.y);
+
+            scene_view_render(views[0], active_scene);
+            scene_view_render_get(views[0], &color, 0);
+
+            int32_t x, y;
+            scene_view_get_size(views[0], &x, &y);
+
+            igImage((void *) (intptr_t) color, (ImVec2) {x, y}, (struct ImVec2) {0, 1}, (struct ImVec2) {1, 0},
+                    (struct ImVec4) {1, 1, 1, 1}, (struct ImVec4) {0, 0, 0, 0});
+        }
+        igEnd();
+        igPopStyleVar(1);
+        return;
+    }
+
     for(int32_t i=0; i<sizeof(views) / sizeof(void*); ++i) {
         float margin = 8.0f;
         float top = 8.0f;
@@ -224,25 +262,26 @@ void window_scene_view_draw(){
         ImGuiWindowFlags_ flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
                                   | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysUseWindowPadding
                                   | ImGuiWindowFlags_NoBringToFrontOnFocus;
-        igBegin(scene_view_get_name(views[i]), 0, flags);
+        bool visible = igBegin(scene_view_get_name(views[i]), 0, flags);
 
+        if (visible) {
+            if (igIsWindowHovered(0)) {
+                scene_view_update_controller(views[i]);
+            }
 
-        if (igIsWindowHovered(0)) {
-            scene_view_update_controller(views[i]);
+            scene_view_render(views[i], active_scene);
+            scene_view_render_get(views[i], &color, 0);
+
+            int32_t x, y;
+            scene_view_get_size(views[i], &x, &y);
+
+            igImage((void *) (intptr_t) color, (ImVec2) {x, y}, (struct ImVec2) {0, 1}, (struct ImVec2) {1, 0},
+                    (struct ImVec4) {1, 1, 1, 1}, (struct ImVec4) {0, 0, 0, 0});
+
+            ImVec2 size;
+            igGetWindowContentRegionMax(&size);
+            scene_view_resize(views[i], size.x, size.y);
         }
-
-        scene_view_render(views[i], active_scene);
-        scene_view_render_get(views[i], &color, 0);
-
-        int32_t x, y;
-        scene_view_get_size(views[i], &x, &y);
-
-        igImage((void *) (intptr_t) color, (ImVec2) {x, y}, (struct ImVec2) {0, 1}, (struct ImVec2) {1, 0},
-                (struct ImVec4) {1, 1, 1, 1}, (struct ImVec4) {0, 0, 0, 0});
-
-        ImVec2 size;
-        igGetWindowContentRegionMax(&size);
-        scene_view_resize(views[i], size.x, size.y);
         igEnd();
     }
 
@@ -286,35 +325,154 @@ bool release = false;
 const float tight = -0.031;
 const float relax_delta = 0.055;
 const float speed = 0.05f;
-void window_manipulator_demo(){
 
-    const float epsilon = .0001f;
+static bool window_get_required_node(const char* name, scene_node* out_node)
+{
+    /*
+     * Centralized node lookup for the manipulator demo.
+     * If a node name changes in Blender/glTF export, this function prevents
+     * silent memory corruption and gives a clear console message.
+     */
+    if (active_scene == 0 || out_node == 0 || name == 0) {
+        fprintf(stderr, "Manipulator demo: invalid node lookup request\n");
+        return false;
+    }
+
+    if (!scene_node_get(active_scene, name, out_node)) {
+        fprintf(stderr, "Manipulator demo: required node '%s' was not found\n", name);
+        return false;
+    }
+
+    return true;
+}
+
+static void window_view_options()
+{
+    int32_t projection_mode = scene_view_get_type(views[0]) == SCENE_VIEW_PERSPECTIVE ? 0 : 1;
+
+    if (igRadioButton_IntPtr("Perspective", &projection_mode, 0)) {
+        scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
+    }
+
+    igSameLine(0, 8);
+
+    if (igRadioButton_IntPtr("Orthographic", &projection_mode, 1)) {
+        scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_FRONT);
+    }
+
+    float fov = scene_view_get_fov(views[0]);
+    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0)) {
+        scene_view_set_fov(views[0], fov);
+    }
+}
+
+void window_manipulator_demo()
+{
+    const float epsilon = 0.0001f;
+    const float dt = device_dt_get();
+
+    /*
+     * Read UI first, so button input affects motion in the same frame.
+     */
+    int32_t width, height;
+    device_window_dimensions_get(&width, &height);
+
+    igSetNextWindowPos((ImVec2){width * 0.80f, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
+    igSetNextWindowSize((ImVec2){width * 0.18f, 260}, ImGuiCond_FirstUseEver);
+
+    bool visible = igBegin("Manipulator", 0, ImGuiWindowFlags_NoBackground);
+    if (visible) {
+        window_view_options();
+
+        if (igButton("Translate X", (struct ImVec2){200, 25})) {
+            nauo2_side *= -1;
+        }
+
+        bool rotation_button_active = false;
+
+        igButton("CW", (struct ImVec2){80, 25});
+        if (igIsItemActive()) {
+            nau01_rot_dir = -1.0f;
+            rotation_button_active = true;
+        }
+
+        igSameLine(127, 0);
+
+        igButton("CCW", (struct ImVec2){80, 25});
+        if (igIsItemActive()) {
+            nau01_rot_dir = 1.0f;
+            rotation_button_active = true;
+        }
+
+        if (!rotation_button_active) {
+            nau01_rot_dir = 0.0f;
+        }
+
+        if (igButton("Translate Y", (struct ImVec2){200, 25})) {
+            nauo_side *= -1;
+
+            if (nauo_side > 0) {
+                target_height = start_height;
+            } else {
+                target_height = end_height;
+            }
+        }
+
+        igButton("Hold", (struct ImVec2){200, 25});
+        hold = igIsItemActive();
+
+        igButton("Release", (struct ImVec2){200, 25});
+        release = igIsItemActive();
+    } else {
+        nau01_rot_dir = 0.0f;
+        hold = false;
+        release = false;
+    }
+    igEnd();
+
+    /*
+     * Translate carriage on X.
+     */
     scene_node nauo2;
-    if(scene_node_get(active_scene, "NAUO2", &nauo2));
+    if (!window_get_required_node("NAUO2", &nauo2)) {
+        return;
+    }
+
     gl_mat tr;
     scene_node_get_world_tr(active_scene, &nauo2, tr.data);
+
     gl_vec3 cur_tr = gl_mat_get_translation(tr);
     gl_t delta = -cur_tr.x + nauo2_side * nau02_loc;
-    if(gl_abs(delta) > epsilon){
-        gl_t ndelta = delta / gl_abs(delta);
-        float new_pos = cur_tr.x + nauo2_speed * device_dt_get() * ndelta;
+
+    if (gl_abs(delta) > epsilon) {
+        gl_t direction = delta / gl_abs(delta);
+        float new_pos = cur_tr.x + nauo2_speed * dt * direction;
         new_pos = gl_clamp(new_pos, -nau02_loc, nau02_loc);
-        if(gl_abs(new_pos - cur_tr.x) > epsilon) {
+
+        if (gl_abs(new_pos - cur_tr.x) > epsilon) {
             tr = gl_mat_set_translation(tr, gl_vec3_new(new_pos, cur_tr.y, cur_tr.z));
             scene_node_set_world_tr(active_scene, &nauo2, tr.data);
             window_scene_views_mark_as_dirty();
         }
     }
 
+    /*
+     * Translate vertical/lift node on Y.
+     */
     scene_node nauo;
-    if(scene_node_get(active_scene, "NAUO2.001", &nauo));
+    if (!window_get_required_node("NAUO2.001", &nauo)) {
+        return;
+    }
+
     scene_node_get_world_tr(active_scene, &nauo, tr.data);
     cur_tr = gl_mat_get_translation(tr);
-    delta = (- cur_tr.y + target_height);
-    if(gl_abs(delta) > epsilon) {
-        gl_t ndelta = delta / gl_abs(delta);
-        gl_t new_height = cur_tr.y + ndelta * nauo_speed * device_dt_get();
+    delta = -cur_tr.y + target_height;
+
+    if (gl_abs(delta) > epsilon) {
+        gl_t direction = delta / gl_abs(delta);
+        gl_t new_height = cur_tr.y + direction * nauo_speed * dt;
         new_height = gl_clamp(new_height, end_height, start_height);
+
         if (gl_abs(cur_tr.y - new_height) > epsilon) {
             tr = gl_mat_set_translation(tr, gl_vec3_new(cur_tr.x, new_height, cur_tr.z));
             scene_node_set_world_tr(active_scene, &nauo, tr.data);
@@ -322,91 +480,69 @@ void window_manipulator_demo(){
         }
     }
 
+    /*
+     * Rotate wrist/gripper.
+     * Important fix: clamp rotation before building the matrix.
+     */
     scene_node nauo1;
-    if(scene_node_get(active_scene, "NAUO1.003", &nauo1));
-    scene_node_get_world_tr(active_scene, &nauo1, tr.data);
-    if(gl_abs(nau01_rot_dir) > epsilon){
+    if (!window_get_required_node("NAUO1.003", &nauo1)) {
+        return;
+    }
 
-        nau01_rot += device_dt_get() * nau01_rot_speed * nau01_rot_dir;
-        gl_vec3 cur_tr = gl_mat_get_translation(tr);
-        gl_mat new_tr = gl_mat_rotate_y(nau01_rot);
-        new_tr = gl_mat_set_translation(new_tr, cur_tr);
+    scene_node_get_world_tr(active_scene, &nauo1, tr.data);
+
+    if (gl_abs(nau01_rot_dir) > epsilon) {
+        nau01_rot += dt * nau01_rot_speed * nau01_rot_dir;
         nau01_rot = gl_clamp(nau01_rot, -rot_limit, rot_limit);
+
+        gl_vec3 current_position = gl_mat_get_translation(tr);
+        gl_mat new_tr = gl_mat_rotate_y(nau01_rot);
+        new_tr = gl_mat_set_translation(new_tr, current_position);
 
         scene_node_set_world_tr(active_scene, &nauo1, new_tr.data);
         window_scene_views_mark_as_dirty();
     }
 
-
+    /*
+     * Move gripper fingers.
+     */
     scene_node n1, n2;
+    if (!window_get_required_node("NAUO3", &n1)) {
+        return;
+    }
+
+    if (!window_get_required_node("NAUO2.002", &n2)) {
+        return;
+    }
+
     gl_mat tr1, tr2;
-    gl_vec3 cur_tr1, cur_tr2;
-    if(scene_node_get(active_scene, "NAUO3", &n1));
-    if(scene_node_get(active_scene, "NAUO2.002", &n2));
     scene_node_get_local_tr(active_scene, &n1, tr1.data);
     scene_node_get_local_tr(active_scene, &n2, tr2.data);
-    cur_tr1 = gl_mat_get_translation(tr1);
-    cur_tr2 = gl_mat_get_translation(tr2);
 
-    if(hold)
-    {
-        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0,0, speed * device_dt_get()));
-        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0,0, -speed * device_dt_get()));
+    gl_vec3 cur_tr1 = gl_mat_get_translation(tr1);
+    gl_vec3 cur_tr2 = gl_mat_get_translation(tr2);
+
+    if (hold) {
+        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0, 0, speed * dt));
+        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0, 0, -speed * dt));
     }
 
-    if(release){
-        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0,0, -speed * device_dt_get()));
-        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0,0, speed * device_dt_get()));
+    if (release) {
+        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0, 0, -speed * dt));
+        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0, 0, speed * dt));
     }
 
-    if(hold || release) {
+    if (hold || release) {
         cur_tr1.z = gl_clamp(cur_tr1.z, tight - relax_delta, tight);
         cur_tr2.z = gl_clamp(cur_tr2.z, tight, tight + relax_delta);
+
         tr1 = gl_mat_set_translation(tr1, cur_tr1);
         tr2 = gl_mat_set_translation(tr2, cur_tr2);
+
         scene_node_set_local_tr(active_scene, &n1, tr1.data);
         scene_node_set_local_tr(active_scene, &n2, tr2.data);
+
         window_scene_views_mark_as_dirty();
-    }
-
-    int32_t width, height;
-    device_window_dimensions_get(&width, &height);
-    igSetNextWindowPos((ImVec2){width * 0.80f, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
-    igSetNextWindowSize((ImVec2){width * 0.18f, 180}, ImGuiCond_FirstUseEver);
-    if(igBegin("Manipulator",0,ImGuiWindowFlags_NoBackground)) {
-        if (igButton("Translate X", (struct ImVec2) {200, 25})) {
-            nauo2_side *= -1;
-        }
-
-        bool active = false;
-        igButton("CW", (struct ImVec2) {80, 25});
-        if (igIsItemActive()) {
-            nau01_rot_dir = -1.0f;
-            active = true;
-        }
-        igSameLine(127, 0);
-        igButton("CCW", (struct ImVec2) {80, 25});
-        if (igIsItemActive()) {
-            nau01_rot_dir = 1.0f;
-            active = true;
-        }
-
-        if (!active) nau01_rot_dir = 0.0f;
-
-        if (igButton("Translate Y", (struct ImVec2) {200, 25})) {
-            nauo_side *= -1.0;
-            if (nauo_side > 0)
-                target_height = start_height;
-            else target_height = end_height;
-
-        }
-
-        igButton("Hold", (struct ImVec2) {200, 25});
-        hold = (igIsItemActive());
-
-        (igButton("Release", (struct ImVec2) {200, 25}));
-        release = igIsItemActive();
-        igEnd();
     }
 }
 
@@ -445,17 +581,29 @@ void window_run() {
 
         device_update_events();
 
-
-        gfx_begin_pass(0, GFX_PASS_OPTION_DEPTH_TEST, GFX_PASS_ACTION_CLEAR_COLOR | GFX_PASS_ACTION_CLEAR_DEPTH,
+        gfx_begin_pass(0,
+                       GFX_PASS_OPTION_DEPTH_TEST,
+                       GFX_PASS_ACTION_CLEAR_COLOR | GFX_PASS_ACTION_CLEAR_DEPTH,
                        bg_color);
+
         gui_begin_frame();
+
         window_scene_view_draw();
-        window_shader_editor();
         window_manipulator_demo();
-        window_log();
+
+        /*
+         * Developer tools are useful while debugging, but they distract
+         * during the final project demonstration.
+         */
+        if (!presentation_mode) {
+            window_shader_editor();
+            window_log();
+        }
+
         int32_t width, height;
         device_window_dimensions_get(&width, &height);
         gfx_viewport_set(width, height);
+
         gui_end_frame();
         gfx_end_pass();
         device_refresh();

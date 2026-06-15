@@ -157,10 +157,6 @@ target_include_directories(IbcWeb PRIVATE
 
 target_link_libraries(IbcWeb PRIVATE cimgui)
 
-add_custom_command(TARGET IbcWeb POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
-        "$<TARGET_FILE_DIR:IbcWeb>/Shaders")
 
 if(TARGET glfw)
     target_link_libraries(IbcWeb PRIVATE glfw)

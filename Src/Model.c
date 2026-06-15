@@ -7,6 +7,9 @@
 
 #include "Model.h"
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #include "Allocator.h"
 #include "GlMath.h"
@@ -29,22 +32,87 @@
  */
 
 
+static bool mdl_read_entire_file(const char* path, void** out_buffer, size_t* out_size)
+{
+    /*
+     * Reads the whole glTF file into memory.
+     * This prevents crashes when the file path is wrong, the file is empty,
+     * or the read is incomplete.
+     */
+    if (out_buffer == 0 || out_size == 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: output pointers are null\n");
+        return false;
+    }
+
+    *out_buffer = 0;
+    *out_size = 0;
+
+    if (path == 0 || path[0] == '\0') {
+        fprintf(stderr, "- mdl_read_entire_file failed: path is null or empty\n");
+        return false;
+    }
+
+    FILE* file = fopen(path, "rb");
+    if (file == 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: could not open '%s'\n", path);
+        return false;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: fseek end failed for '%s'\n", path);
+        fclose(file);
+        return false;
+    }
+
+    long file_size = ftell(file);
+    if (file_size <= 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: invalid file size for '%s'\n", path);
+        fclose(file);
+        return false;
+    }
+
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: fseek start failed for '%s'\n", path);
+        fclose(file);
+        return false;
+    }
+
+    void* buffer = OS_MALLOC((size_t)file_size);
+    if (buffer == 0) {
+        fprintf(stderr, "- mdl_read_entire_file failed: allocation failed for '%s'\n", path);
+        fclose(file);
+        return false;
+    }
+
+    size_t bytes_read = fread(buffer, 1, (size_t)file_size, file);
+    fclose(file);
+
+    if (bytes_read != (size_t)file_size) {
+        fprintf(stderr, "- mdl_read_entire_file failed: incomplete read for '%s'\n", path);
+        OS_FREE(buffer);
+        return false;
+    }
+
+    *out_buffer = buffer;
+    *out_size = (size_t)file_size;
+    return true;
+}
+
 mdl_handle mdl_load(const char* path) {
     bool verbose = false;
 
-    printf("Loading model %s\n", path);
+    printf("Loading model %s\n", path != 0 ? path : "<null>");
 
-    FILE* file = fopen(path, "r");
+    void* buffer = 0;
+    size_t size = 0;
 
-    fseek(file, 0, SEEK_END);
-    int32_t size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    void* buffer = OS_MALLOC(size);
-    fread(buffer, size, 1, file);
+    if (!mdl_read_entire_file(path, &buffer, &size)) {
+        return 0;
+    }
 
     cgltf_options options = {0};
     cgltf_data *data = NULL;
+
     cgltf_result result = cgltf_parse(&options, buffer, size, &data);
     if (result != cgltf_result_success) {
         fprintf(stderr, "- Gltf parse failed %i\n", result);
@@ -52,9 +120,31 @@ mdl_handle mdl_load(const char* path) {
         return 0;
     }
 
-    cgltf_load_buffers(&options, data, path);
+    result = cgltf_load_buffers(&options, data, path);
+    if (result != cgltf_result_success) {
+        fprintf(stderr, "- Gltf buffer loading failed %i\n", result);
+        cgltf_free(data);
+        OS_FREE(buffer);
+        return 0;
+    }
+
+    result = cgltf_validate(data);
+    if (result != cgltf_result_success) {
+        fprintf(stderr, "- Gltf validation warning/error %i\n", result);
+        /*
+         * For development you may continue after validation warnings.
+         * For production/import pipeline, prefer returning 0 here.
+         */
+    }
 
     mdl_handle handle = OS_MALLOC(sizeof(mdl_data));
+    if (handle == 0) {
+        fprintf(stderr, "- Model allocation failed\n");
+        cgltf_free(data);
+        OS_FREE(buffer);
+        return 0;
+    }
+
     os_memset(handle, 0, sizeof(mdl_data));
 
     /*

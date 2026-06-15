@@ -148,7 +148,7 @@ void scene_view_update_controller(scene_view_handle handle) {
     if (gl_abs(joystick.pointer.dy) > DELTA_EPSILON ||
         gl_abs(joystick.pointer.dx) > DELTA_EPSILON) {
 
-        if (joystick.mouse.rmb_down) {
+        if (handle->view_type == SCENE_VIEW_PERSPECTIVE && joystick.mouse.rmb_down) {
 
             float new_jaw = (handle->controller.jaw + joystick.pointer.dy * dt * handle->controller.rot_speed);
             float new_pitch = (handle->controller.pitch + joystick.pointer.dx * dt * handle->controller.rot_speed);
@@ -261,6 +261,46 @@ void scene_view_resize(scene_view_handle handle, int32_t w, int32_t h) {
 void scene_view_get_size(scene_view_handle handle, int32_t* width, int32_t* height){
     *width = handle->width;
     *height = handle->height;
+}
+
+scene_view_type scene_view_get_type(scene_view_handle handle) {
+    return handle->view_type;
+}
+
+void scene_view_set_type(scene_view_handle handle, scene_view_type view_type) {
+    if (handle->view_type == view_type) {
+        return;
+    }
+
+    handle->view_type = view_type;
+    handle->name = view_type_to_string(view_type);
+
+    if (view_type != SCENE_VIEW_PERSPECTIVE) {
+        handle->controller.jaw = 0.0f;
+        handle->controller.pitch = 0.0f;
+        scene_view_controller_update_internal(handle);
+    }
+
+    scene_view_controller_update_projection(handle);
+    handle->dirty = true;
+}
+
+float scene_view_get_fov(scene_view_handle handle) {
+    return handle->controller.fov;
+}
+
+void scene_view_set_fov(scene_view_handle handle, float fov) {
+    if (fov < DELTA_EPSILON) {
+        fov = DELTA_EPSILON;
+    }
+
+    if (gl_abs(handle->controller.fov - fov) <= DELTA_EPSILON) {
+        return;
+    }
+
+    handle->controller.fov = fov;
+    scene_view_controller_update_projection(handle);
+    handle->dirty = true;
 }
 
 void scene_view_destroy(scene_view_handle handle){
