@@ -53,10 +53,26 @@ scene_handle active_scene;
 mdl_handle model;
 device_handle device;
 
-static bool presentation_mode = true;
-static bool single_fullscreen_view_mode = true;
+typedef struct {
+    const char* project_name;
+    const char* student_name;
+    const char* professor_name;
+    const char* course_name;
+    const char* faculty_name;
+} window_project_info;
 
-float bg_color[4] = {0.12, 0.11, 0.12, 1.0f};
+static window_project_info project_info = {
+    .project_name  = "Graficki prikaz manipulatora",
+    .student_name  = "Dragutin Sredojevic",
+    .professor_name= "Prof. Dusan Nedeljkovic",
+    .course_name   = "Kompjuterska Grafika",
+    .faculty_name  = "Masinski Fakultet",
+};
+
+static float frame_dt      = 0.0f;
+static bool  show_dev_tools = false;
+
+float bg_color[4] = {0.09f, 0.09f, 0.12f, 1.0f};
 
 bool window_shader_find(gfx_shader_handle handle, int32_t* index) {
     *index = -1;
@@ -207,84 +223,176 @@ void window_shader_editor(){
 }
 
 void window_scene_view_create(){
-
     views[0] = scene_view_create(32, 32, SCENE_VIEW_PERSPECTIVE);
     views[1] = scene_view_create(32, 32, SCENE_VIEW_ORTOGRAPHIC_FRONT);
-
 }
 
+/* Forward declarations — defined later in this file. */
+static void window_view_options(void);
+static void window_manipulator_controls(void);
+
 void window_scene_view_draw(){
-    int32_t color;
-    int32_t window_width, window_height;
-    device_window_dimensions_get(&window_width, &window_height);
+    int32_t ww, wh;
+    device_window_dimensions_get(&ww, &wh);
 
-    if (single_fullscreen_view_mode) {
-        igSetNextWindowPos((ImVec2){0, 0}, ImGuiCond_Always, (ImVec2){0, 0});
-        igSetNextWindowSize((ImVec2){window_width, window_height}, ImGuiCond_Always);
+    /* Right panel: wide enough for text + buttons (min 260 px). */
+    float panel_w = gl_max((float)ww * 0.23f, 260.0f);
+    float view_w  = (float)ww - panel_w;
 
-        ImGuiWindowFlags_ flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
-                                  | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar
-                                  | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground
-                                  | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings;
-        igPushStyleVar_Vec2(ImGuiStyleVar_WindowPadding, (ImVec2){0, 0});
-        bool visible = igBegin(scene_view_get_name(views[0]), 0, flags);
-        if (visible) {
-            if (igIsWindowHovered(0)) {
-                scene_view_update_controller(views[0]);
-            }
+    /* ------------------------------------------------------------------
+     * Left: 3D perspective view — borderless, no title bar, fills left side.
+     * ------------------------------------------------------------------ */
+    igSetNextWindowPos((ImVec2){0.0f, 0.0f}, ImGuiCond_Always, (ImVec2){0.0f, 0.0f});
+    igSetNextWindowSize((ImVec2){view_w, (float)wh}, ImGuiCond_Always);
+    igPushStyleVar_Vec2(ImGuiStyleVar_WindowPadding, (ImVec2){0.0f, 0.0f});
+    {
+        ImGuiWindowFlags_ vf =
+            ImGuiWindowFlags_NoDecoration      |
+            ImGuiWindowFlags_NoMove            |
+            ImGuiWindowFlags_NoScrollWithMouse |
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoSavedSettings   |
+            ImGuiWindowFlags_NoBackground;
+        igBegin("##3dview", NULL, vf);
 
-            ImVec2 size;
-            igGetWindowContentRegionMax(&size);
-            scene_view_resize(views[0], size.x, size.y);
+        if (igIsWindowHovered(0)) {
+            scene_view_update_controller(views[0]);
+        }
 
+        ImVec2 avail;
+        igGetContentRegionAvail(&avail);
+        if (avail.x >= 1.0f && avail.y >= 1.0f) {
+            scene_view_resize(views[0], (int32_t)avail.x, (int32_t)avail.y);
             scene_view_render(views[0], active_scene);
-            scene_view_render_get(views[0], &color, 0);
 
-            int32_t x, y;
-            scene_view_get_size(views[0], &x, &y);
+            int32_t color_tex = -1;
+            scene_view_render_get(views[0], &color_tex, 0);
 
-            igImage((void *) (intptr_t) color, (ImVec2) {x, y}, (struct ImVec2) {0, 1}, (struct ImVec2) {1, 0},
-                    (struct ImVec4) {1, 1, 1, 1}, (struct ImVec4) {0, 0, 0, 0});
+            int32_t sx, sy;
+            scene_view_get_size(views[0], &sx, &sy);
+            igImage(
+                (void*)(intptr_t)color_tex,
+                (ImVec2){(float)sx, (float)sy},
+                (ImVec2){0, 1}, (ImVec2){1, 0},
+                (ImVec4){1, 1, 1, 1}, (ImVec4){0, 0, 0, 0}
+            );
         }
         igEnd();
-        igPopStyleVar(1);
-        return;
     }
+    igPopStyleVar(1);
 
-    for(int32_t i=0; i<sizeof(views) / sizeof(void*); ++i) {
-        float margin = 8.0f;
-        float top = 8.0f;
-        float view_width = (window_width - margin * 3.0f) * 0.5f;
-        float view_height = window_height * 0.58f;
-        igSetNextWindowPos((ImVec2){margin + i * (view_width + margin), top}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
-        igSetNextWindowSize((ImVec2){view_width, view_height}, ImGuiCond_FirstUseEver);
+    /* ------------------------------------------------------------------
+     * Right: presentation panel — project info, camera, controls, stats.
+     * ------------------------------------------------------------------ */
+    igSetNextWindowPos((ImVec2){view_w, 0.0f}, ImGuiCond_Always, (ImVec2){0.0f, 0.0f});
+    igSetNextWindowSize((ImVec2){panel_w, (float)wh}, ImGuiCond_Always);
+    {
+        ImGuiWindowFlags_ pf =
+            ImGuiWindowFlags_NoTitleBar    |
+            ImGuiWindowFlags_NoResize      |
+            ImGuiWindowFlags_NoMove        |
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoSavedSettings;
+        igBegin("##panel", NULL, pf);
 
-        ImGuiWindowFlags_ flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
-                                  | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysUseWindowPadding
-                                  | ImGuiWindowFlags_NoBringToFrontOnFocus;
-        bool visible = igBegin(scene_view_get_name(views[i]), 0, flags);
+        /* ---- Project identity ---- */
+        igSpacing();
+        igTextColored((ImVec4){0.50f, 0.78f, 1.00f, 1.00f}, "%s", project_info.course_name);
+        igTextColored((ImVec4){0.70f, 0.70f, 0.76f, 1.00f}, "%s", project_info.faculty_name);
+        igSpacing();
+        igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){1.0f, 1.0f, 1.0f, 1.0f});
+        igTextWrapped("%s", project_info.project_name);
+        igPopStyleColor(1);
+        igSpacing();
+        igText("Student:    %s", project_info.student_name);
+        igText("Profesor:   %s", project_info.professor_name);
 
-        if (visible) {
-            if (igIsWindowHovered(0)) {
-                scene_view_update_controller(views[i]);
+        igSeparator();
+        igSpacing();
+
+        /* ---- Camera ---- */
+        igTextDisabled("KAMERA");
+        igSpacing();
+        window_view_options();
+
+        igSpacing();
+        igSeparator();
+        igSpacing();
+
+        /* ---- Manipulator controls ---- */
+        igTextDisabled("MANIPULATOR");
+        igSpacing();
+        window_manipulator_controls();
+
+        igSpacing();
+        igSeparator();
+        igSpacing();
+
+        /* ---- Camera control hints ---- */
+        igTextDisabled("KONTROLE KAMERE");
+        igSpacing();
+        igText("Desni klik + vucenje");
+        igTextDisabled("  Rotacija");
+        igText("Srednji klik + vucenje");
+        igTextDisabled("  Pomak");
+        igText("Tocak misa");
+        igTextDisabled("  Zum");
+
+        igSpacing();
+        igSeparator();
+        igSpacing();
+
+        /* ---- Scene stats ---- */
+        igTextDisabled("STATISTIKE");
+        igSpacing();
+        {
+            int32_t node_count = 0, mesh_count = 0;
+            scene_node_count(active_scene, &node_count);
+            scene_mesh_count(active_scene, &mesh_count);
+            igText("Cvorovi:    %d", node_count);
+            igText("Mreze:      %d", mesh_count);
+            igText("FPS:        %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
+        }
+
+        igSpacing();
+        igSeparator();
+        igSpacing();
+
+        /* ---- Developer tools toggle ---- */
+        if (igButton(show_dev_tools ? "Sakrij alate" : "Dev alati", (ImVec2){-1.0f, 0.0f}))
+            show_dev_tools = !show_dev_tools;
+
+        igSpacing();
+        igSeparator();
+        igSpacing();
+
+        /* ---- Orthographic front preview ---- */
+        igTextDisabled("PRIKAZ SPREDA");
+        igSpacing();
+        {
+            ImVec2 prev_avail;
+            igGetContentRegionAvail(&prev_avail);
+            float pw = prev_avail.x;
+            float ph = gl_min(prev_avail.y, pw * 0.70f);
+            if (pw >= 2.0f && ph >= 2.0f) {
+                if (igIsWindowHovered(0)) {
+                    scene_view_update_controller(views[1]);
+                }
+                scene_view_resize(views[1], (int32_t)pw, (int32_t)ph);
+                scene_view_render(views[1], active_scene);
+                int32_t prev_tex = -1;
+                scene_view_render_get(views[1], &prev_tex, 0);
+                igImage(
+                    (void*)(intptr_t)prev_tex,
+                    (ImVec2){pw, ph},
+                    (ImVec2){0, 1}, (ImVec2){1, 0},
+                    (ImVec4){1, 1, 1, 1}, (ImVec4){0, 0, 0, 0}
+                );
             }
-
-            scene_view_render(views[i], active_scene);
-            scene_view_render_get(views[i], &color, 0);
-
-            int32_t x, y;
-            scene_view_get_size(views[i], &x, &y);
-
-            igImage((void *) (intptr_t) color, (ImVec2) {x, y}, (struct ImVec2) {0, 1}, (struct ImVec2) {1, 0},
-                    (struct ImVec4) {1, 1, 1, 1}, (struct ImVec4) {0, 0, 0, 0});
-
-            ImVec2 size;
-            igGetWindowContentRegionMax(&size);
-            scene_view_resize(views[i], size.x, size.y);
         }
+
         igEnd();
     }
-
 }
 
 void window_log(){
@@ -346,89 +454,65 @@ static bool window_get_required_node(const char* name, scene_node* out_node)
     return true;
 }
 
-static void window_view_options()
+static void window_view_options(void)
 {
     int32_t projection_mode = scene_view_get_type(views[0]) == SCENE_VIEW_PERSPECTIVE ? 0 : 1;
 
-    if (igRadioButton_IntPtr("Perspective", &projection_mode, 0)) {
+    if (igRadioButton_IntPtr("Perspektivna", &projection_mode, 0))
         scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
-    }
 
     igSameLine(0, 8);
 
-    if (igRadioButton_IntPtr("Orthographic", &projection_mode, 1)) {
+    if (igRadioButton_IntPtr("Ortografska", &projection_mode, 1))
         scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_FRONT);
-    }
 
     float fov = scene_view_get_fov(views[0]);
-    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0)) {
+    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0))
         scene_view_set_fov(views[0], fov);
+}
+
+/*
+ * Draw the manipulator buttons inside the currently open ImGui window.
+ * Must NOT call igBegin/igEnd — called from the presentation panel.
+ */
+static void window_manipulator_controls(void)
+{
+    ImVec2 avail;
+    igGetContentRegionAvail(&avail);
+    float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
+
+    /* X carriage */
+    if (igButton("Pomak X", (ImVec2){-1.0f, 0.0f}))
+        nauo2_side *= -1;
+
+    /* Wrist rotation — hold to spin */
+    bool rot_active = false;
+    igButton("CW", (ImVec2){hw, 0.0f});
+    if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
+    igSameLine(0.0f, -1.0f);
+    igButton("CCW", (ImVec2){hw, 0.0f});
+    if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
+    if (!rot_active) nau01_rot_dir = 0.0f;
+
+    /* Y lift */
+    if (igButton("Pomak Y", (ImVec2){-1.0f, 0.0f})) {
+        nauo_side *= -1;
+        target_height = (nauo_side > 0) ? start_height : end_height;
     }
+
+    /* Gripper fingers — hold to actuate */
+    igButton("Stisni", (ImVec2){-1.0f, 0.0f});
+    hold = igIsItemActive();
+
+    igButton("Otpusti", (ImVec2){-1.0f, 0.0f});
+    release = igIsItemActive();
 }
 
 void window_manipulator_demo()
 {
     const float epsilon = 0.0001f;
     const float dt = device_dt_get();
-
-    /*
-     * Read UI first, so button input affects motion in the same frame.
-     */
-    int32_t width, height;
-    device_window_dimensions_get(&width, &height);
-
-    igSetNextWindowPos((ImVec2){width * 0.80f, height * 0.62f}, ImGuiCond_FirstUseEver, (ImVec2){0, 0});
-    igSetNextWindowSize((ImVec2){width * 0.18f, 260}, ImGuiCond_FirstUseEver);
-
-    bool visible = igBegin("Manipulator", 0, ImGuiWindowFlags_NoBackground);
-    if (visible) {
-        window_view_options();
-
-        if (igButton("Translate X", (struct ImVec2){200, 25})) {
-            nauo2_side *= -1;
-        }
-
-        bool rotation_button_active = false;
-
-        igButton("CW", (struct ImVec2){80, 25});
-        if (igIsItemActive()) {
-            nau01_rot_dir = -1.0f;
-            rotation_button_active = true;
-        }
-
-        igSameLine(127, 0);
-
-        igButton("CCW", (struct ImVec2){80, 25});
-        if (igIsItemActive()) {
-            nau01_rot_dir = 1.0f;
-            rotation_button_active = true;
-        }
-
-        if (!rotation_button_active) {
-            nau01_rot_dir = 0.0f;
-        }
-
-        if (igButton("Translate Y", (struct ImVec2){200, 25})) {
-            nauo_side *= -1;
-
-            if (nauo_side > 0) {
-                target_height = start_height;
-            } else {
-                target_height = end_height;
-            }
-        }
-
-        igButton("Hold", (struct ImVec2){200, 25});
-        hold = igIsItemActive();
-
-        igButton("Release", (struct ImVec2){200, 25});
-        release = igIsItemActive();
-    } else {
-        nau01_rot_dir = 0.0f;
-        hold = false;
-        release = false;
-    }
-    igEnd();
+    frame_dt = dt;
 
     /*
      * Translate carriage on X.
@@ -595,7 +679,7 @@ void window_run() {
          * Developer tools are useful while debugging, but they distract
          * during the final project demonstration.
          */
-        if (!presentation_mode) {
+        if (show_dev_tools) {
             window_shader_editor();
             window_log();
         }

@@ -8,7 +8,7 @@ int main(int argc, char** argv) {
             .fullscreen = false,
             .width = 1360,
             .height = 768,
-            .title = "Device",
+            .title = "Graficki prikaz manipulatora",
             .resizable = true,
     };
 
