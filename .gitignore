@@ -1,5 +1,15 @@
 Src/ThirdParty/*
 Build/*
+!Build/Bin/
+Build/Bin/*
+Build/Bin/**/*
+!Build/Bin/**/
+!Build/Bin/**/*.fs
+!Build/Bin/**/*.vs
+!Build/Bin/**/*.frag
+!Build/Bin/**/*.vert
+!Build/Bin/**/*.glsl
+!Build/Bin/**/*.hlsl
 .idea/*
 /cmake-build-codex
 .aicodeprep-gui
