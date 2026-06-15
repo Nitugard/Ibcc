@@ -1,3 +1,4 @@
 Src/ThirdParty/*
 Build/*
 .idea/*
+/cmake-build-codex
