@@ -64,7 +64,7 @@ typedef struct {
 static window_project_info project_info = {
     .project_name  = "Graficki prikaz manipulatora",
     .student_name  = "Dragutin Sredojevic",
-    .professor_name= "Prof. Dusan Nedeljkovic",
+    .professor_name= "Dusan Nedeljkovic",
     .course_name   = "Kompjuterska Grafika",
     .faculty_name  = "Masinski Fakultet",
 };
@@ -164,10 +164,7 @@ int window_shader_editor_callback(struct ImGuiInputTextCallbackData* data) {
 }
 
 void window_scene_views_mark_as_dirty(){
-    for(int32_t j=0; j<sizeof(views) / sizeof(void*); ++j)
-    {
-        scene_view_flag_dirty(views[j]);
-    }
+    if (views[0]) scene_view_flag_dirty(views[0]);
 }
 
 void window_shader_editor(){
@@ -224,12 +221,17 @@ void window_shader_editor(){
 
 void window_scene_view_create(){
     views[0] = scene_view_create(32, 32, SCENE_VIEW_PERSPECTIVE);
-    views[1] = scene_view_create(32, 32, SCENE_VIEW_ORTOGRAPHIC_FRONT);
+    views[1] = NULL;
 }
 
-/* Forward declarations — defined later in this file. */
-static void window_view_options(void);
-static void window_manipulator_controls(void);
+static void window_view_options(void)
+{
+    float fov = scene_view_get_fov(views[0]);
+    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0))
+        scene_view_set_fov(views[0], fov);
+}
+
+static void window_manipulator_controls(void);   /* defined after motion vars */
 
 void window_scene_view_draw(){
     int32_t ww, wh;
@@ -304,92 +306,42 @@ void window_scene_view_draw(){
         igTextWrapped("%s", project_info.project_name);
         igPopStyleColor(1);
         igSpacing();
-        igText("Student:    %s", project_info.student_name);
-        igText("Profesor:   %s", project_info.professor_name);
-
+        igText("Student:  %s", project_info.student_name);
+        igText("Profesor: %s", project_info.professor_name);
         igSeparator();
-        igSpacing();
 
         /* ---- Camera ---- */
         igTextDisabled("KAMERA");
-        igSpacing();
         window_view_options();
-
-        igSpacing();
         igSeparator();
-        igSpacing();
 
         /* ---- Manipulator controls ---- */
         igTextDisabled("MANIPULATOR");
         igSpacing();
         window_manipulator_controls();
-
-        igSpacing();
         igSeparator();
-        igSpacing();
 
         /* ---- Camera control hints ---- */
-        igTextDisabled("KONTROLE KAMERE");
-        igSpacing();
-        igText("Desni klik + vucenje");
-        igTextDisabled("  Rotacija");
-        igText("Srednji klik + vucenje");
-        igTextDisabled("  Pomak");
-        igText("Tocak misa");
-        igTextDisabled("  Zum");
-
-        igSpacing();
+        igTextDisabled("KONTROLE");
+        igText("Desni klik    Rotacija");
+        igText("Srednji klik  Pomak");
+        igText("Tocak         Zum");
         igSeparator();
-        igSpacing();
 
-        /* ---- Scene stats ---- */
+        /* ---- Stats ---- */
         igTextDisabled("STATISTIKE");
-        igSpacing();
         {
-            int32_t node_count = 0, mesh_count = 0;
-            scene_node_count(active_scene, &node_count);
-            scene_mesh_count(active_scene, &mesh_count);
-            igText("Cvorovi:    %d", node_count);
-            igText("Mreze:      %d", mesh_count);
-            igText("FPS:        %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
+            int32_t nodes = 0, meshes = 0;
+            scene_node_count(active_scene, &nodes);
+            scene_mesh_count(active_scene, &meshes);
+            igText("Cvorovi: %d   Mreze: %d", nodes, meshes);
+            igText("FPS: %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
         }
-
-        igSpacing();
         igSeparator();
-        igSpacing();
 
         /* ---- Developer tools toggle ---- */
         if (igButton(show_dev_tools ? "Sakrij alate" : "Dev alati", (ImVec2){-1.0f, 0.0f}))
             show_dev_tools = !show_dev_tools;
-
-        igSpacing();
-        igSeparator();
-        igSpacing();
-
-        /* ---- Orthographic front preview ---- */
-        igTextDisabled("PRIKAZ SPREDA");
-        igSpacing();
-        {
-            ImVec2 prev_avail;
-            igGetContentRegionAvail(&prev_avail);
-            float pw = prev_avail.x;
-            float ph = gl_min(prev_avail.y, pw * 0.70f);
-            if (pw >= 2.0f && ph >= 2.0f) {
-                if (igIsWindowHovered(0)) {
-                    scene_view_update_controller(views[1]);
-                }
-                scene_view_resize(views[1], (int32_t)pw, (int32_t)ph);
-                scene_view_render(views[1], active_scene);
-                int32_t prev_tex = -1;
-                scene_view_render_get(views[1], &prev_tex, 0);
-                igImage(
-                    (void*)(intptr_t)prev_tex,
-                    (ImVec2){pw, ph},
-                    (ImVec2){0, 1}, (ImVec2){1, 0},
-                    (ImVec4){1, 1, 1, 1}, (ImVec4){0, 0, 0, 0}
-                );
-            }
-        }
 
         igEnd();
     }
@@ -434,6 +386,29 @@ const float tight = -0.031;
 const float relax_delta = 0.055;
 const float speed = 0.05f;
 
+static void window_manipulator_controls(void)
+{
+    ImVec2 avail; igGetContentRegionAvail(&avail);
+    float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
+
+    if (igButton("Pomak X", (ImVec2){-1.0f, 0.0f}))
+        nauo2_side *= -1;
+
+    bool rot_active = false;
+    igButton("CW",  (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
+    igSameLine(0.0f, -1.0f);
+    igButton("CCW", (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
+    if (!rot_active) nau01_rot_dir = 0.0f;
+
+    if (igButton("Pomak Y", (ImVec2){-1.0f, 0.0f})) {
+        nauo_side *= -1;
+        target_height = (nauo_side > 0) ? start_height : end_height;
+    }
+
+    igButton("Stisni",  (ImVec2){-1.0f, 0.0f}); hold    = igIsItemActive();
+    igButton("Otpusti", (ImVec2){-1.0f, 0.0f}); release = igIsItemActive();
+}
+
 static bool window_get_required_node(const char* name, scene_node* out_node)
 {
     /*
@@ -452,60 +427,6 @@ static bool window_get_required_node(const char* name, scene_node* out_node)
     }
 
     return true;
-}
-
-static void window_view_options(void)
-{
-    int32_t projection_mode = scene_view_get_type(views[0]) == SCENE_VIEW_PERSPECTIVE ? 0 : 1;
-
-    if (igRadioButton_IntPtr("Perspektivna", &projection_mode, 0))
-        scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
-
-    igSameLine(0, 8);
-
-    if (igRadioButton_IntPtr("Ortografska", &projection_mode, 1))
-        scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_FRONT);
-
-    float fov = scene_view_get_fov(views[0]);
-    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0))
-        scene_view_set_fov(views[0], fov);
-}
-
-/*
- * Draw the manipulator buttons inside the currently open ImGui window.
- * Must NOT call igBegin/igEnd — called from the presentation panel.
- */
-static void window_manipulator_controls(void)
-{
-    ImVec2 avail;
-    igGetContentRegionAvail(&avail);
-    float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
-
-    /* X carriage */
-    if (igButton("Pomak X", (ImVec2){-1.0f, 0.0f}))
-        nauo2_side *= -1;
-
-    /* Wrist rotation — hold to spin */
-    bool rot_active = false;
-    igButton("CW", (ImVec2){hw, 0.0f});
-    if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
-    igSameLine(0.0f, -1.0f);
-    igButton("CCW", (ImVec2){hw, 0.0f});
-    if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
-    if (!rot_active) nau01_rot_dir = 0.0f;
-
-    /* Y lift */
-    if (igButton("Pomak Y", (ImVec2){-1.0f, 0.0f})) {
-        nauo_side *= -1;
-        target_height = (nauo_side > 0) ? start_height : end_height;
-    }
-
-    /* Gripper fingers — hold to actuate */
-    igButton("Stisni", (ImVec2){-1.0f, 0.0f});
-    hold = igIsItemActive();
-
-    igButton("Otpusti", (ImVec2){-1.0f, 0.0f});
-    release = igIsItemActive();
 }
 
 void window_manipulator_demo()
@@ -696,7 +617,6 @@ void window_run() {
 
 void window_finalize(){
     scene_view_destroy(views[0]);
-    scene_view_destroy(views[1]);
     scene_delete(active_scene);
     gui_finalize();
     gfx_terminate();
