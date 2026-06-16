@@ -57,6 +57,7 @@ IBC_API void scene_delete(scene_handle handle);
  */
 IBC_API void scene_draw(scene_handle handle);
 IBC_API void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[16], bool draw_skybox);
+IBC_API void scene_shadow_pass(scene_handle handle);
 
 IBC_API void scene_node_count(scene_handle handle, int32_t* count);
 IBC_API void scene_node_root_count(scene_handle handle, int32_t* count);

@@ -447,7 +447,10 @@ void window_run() {
 
         window_scene_view_draw();
         window_manipulator_demo();
+
+#ifndef NDEBUG
         window_log();
+#endif
 
         int32_t width, height;
         device_window_dimensions_get(&width, &height);

@@ -207,6 +207,7 @@ gfx_type gfx_get_type(GLenum type) {
         case GL_FLOAT_MAT3: return GFX_TYPE_FLOAT_MAT_3;
         case GL_FLOAT_MAT4: return GFX_TYPE_FLOAT_MAT_4;
         case GL_SAMPLER_CUBE: return GFX_TYPE_SAMPLER_CUBE;
+        case GL_SAMPLER_2D: return GFX_TYPE_SAMPLER_CUBE;  /* treat same — both need glUniform1i */
         case GL_TEXTURE: return GFX_TYPE_TEXTURE;
     }
 
@@ -873,6 +874,10 @@ gfx_framebuffer_handle gfx_framebuffer_create(gfx_texture_handle color_texture, 
 
     if (color_texture) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_texture->id, 0);
+    } else {
+        /* depth-only FBO — tell driver there is no colour output */
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
     }
 
     if (depth_texture) {
@@ -881,8 +886,13 @@ gfx_framebuffer_handle gfx_framebuffer_create(gfx_texture_handle color_texture, 
 
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
         handle->status = GFX_RESOURCE_ACTIVE;
-        handle->width = color_texture ? color_texture->width : 0;
-        handle->height = color_texture ? color_texture->height : 0;
+        if (color_texture) {
+            handle->width  = color_texture->width;
+            handle->height = color_texture->height;
+        } else if (depth_texture) {
+            handle->width  = depth_texture->width;
+            handle->height = depth_texture->height;
+        }
         LOGG("Fbo created\n");
     }
     else {

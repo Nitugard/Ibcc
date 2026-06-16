@@ -203,6 +203,9 @@ void scene_view_update_controller(scene_view_handle handle) {
 
 void scene_view_render(scene_view_handle handle,void* scene) {
     if (handle->dirty) {
+        /* Depth-only shadow pre-pass (renders to shadow FBO before main scene) */
+        scene_shadow_pass(scene);
+
         gfx_begin_pass(handle->fbo, GFX_PASS_OPTION_DEPTH_TEST | GFX_PASS_OPTION_CULL_BACK,
                        GFX_PASS_ACTION_CLEAR_DEPTH | GFX_PASS_ACTION_CLEAR_COLOR,
                         color);
