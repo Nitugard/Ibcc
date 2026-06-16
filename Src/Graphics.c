@@ -173,6 +173,7 @@ bool gfx_init() {
 #ifdef __EMSCRIPTEN__
 #else
     gl3wInit();
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 #endif
 
     glFrontFace(GL_CCW);
@@ -1023,6 +1024,7 @@ gfx_texture_handle gfx_texture_create(int32_t width, int32_t height, void* data,
     uint32_t texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     int32_t tex_type_src, tex_type_dest, format;
     gfx_texture_gl_get_type(type, &tex_type_src, &tex_type_dest, &format);
@@ -1032,6 +1034,7 @@ gfx_texture_handle gfx_texture_create(int32_t width, int32_t height, void* data,
     gfx_texture_gl_apply_wrap(wrap);
 
     glBindTexture(GL_TEXTURE_2D, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     gfx_texture_handle hndl = OS_MALLOC(sizeof(gfx_texture));
     hndl->width = width;
@@ -1046,12 +1049,21 @@ gfx_texture_handle gfx_texture_create(int32_t width, int32_t height, void* data,
 gfx_texture_handle gfx_texture_load(const char* path, enum gfx_texture_type type, enum gfx_texture_filter_mode filter, enum gfx_texture_wrap_mode wrap) {
 
     int32_t width, height, channels;
-    void* src = stbi_load(path, &width, &height, &channels, 0);
+    int32_t desired_channels = 0;
+    if (type == GFX_TEXTURE_TYPE_RGB || type == GFX_TEXTURE_TYPE_SRGB) {
+        desired_channels = 3;
+    }
+    else if (type == GFX_TEXTURE_TYPE_RGBA || type == GFX_TEXTURE_TYPE_SRGBA) {
+        desired_channels = 4;
+    }
+
+    void* src = stbi_load(path, &width, &height, &channels, desired_channels);
     if (src == 0) {
         LOG_ERROR("Texture could not be loaded: %s", path);
         return 0;
     }
-    LOG("Image loaded, path: %s, width:%i, height:%i \n", path, width, height);
+    LOG("Image loaded, path: %s, width:%i, height:%i, channels:%i \n", path, width, height,
+        desired_channels != 0 ? desired_channels : channels);
     gfx_texture_handle handle = gfx_texture_create(width, height, src, type, filter, wrap);
     stbi_image_free(src);
     return handle;
@@ -1065,9 +1077,18 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
     uint32_t id;
     glGenTextures(1, &id);
     glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     int32_t tex_type_src, tex_type_dest, format;
     gfx_texture_gl_get_type(type, &tex_type_src, &tex_type_dest, &format);
+    int32_t desired_channels = 0;
+    if (type == GFX_TEXTURE_TYPE_RGB || type == GFX_TEXTURE_TYPE_SRGB) {
+        desired_channels = 3;
+    }
+    else if (type == GFX_TEXTURE_TYPE_RGBA || type == GFX_TEXTURE_TYPE_SRGBA) {
+        desired_channels = 4;
+    }
+
     unsigned char fallback_faces[6][3] = {
             {120, 160, 220},
             {120, 160, 220},
@@ -1084,12 +1105,13 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
 
         char buffer[MAXIMUM_PATH_LENGTH];
         sprintf(buffer, "%s%s", path, names[i]);
-        src = stbi_load(buffer, &width, &height, &ch, 0);
+        src = stbi_load(buffer, &width, &height, &ch, desired_channels);
 
         if(src == 0) {
             LOG_ERROR("Cubemap load fail, side %i, path: %s\n", i, buffer);
             src = fallback_faces[i];
             used_fallback = true;
+            ch = 3;
         }
 
         glTexImage2D(
@@ -1097,6 +1119,9 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
                 0, tex_type_src, width, height, 0, tex_type_dest, format,
                 src
         );
+
+        LOG("Cubemap face loaded, side:%i, path:%s, width:%i, height:%i, channels:%i\n",
+            i, buffer, width, height, desired_channels != 0 ? desired_channels : ch);
 
         if(!used_fallback || src != fallback_faces[i]) {
             stbi_image_free(src);
@@ -1114,6 +1139,7 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
     gfx_texture_cubemap_handle hndl = OS_MALLOC(sizeof(gfx_texture_cubemap));
     hndl->texture.id = id;

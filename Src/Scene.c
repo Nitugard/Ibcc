@@ -628,6 +628,30 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     gfx_wireframe_enable(false);
 }
 
+bool scene_get_skybox_render(scene_handle handle) {
+    return handle->skybox_render;
+}
+
+void scene_set_skybox_render(scene_handle handle, bool render) {
+    handle->skybox_render = render;
+}
+
+float scene_get_skybox_exposure(scene_handle handle) {
+    if (!handle->skybox_enabled) {
+        return 1.0f;
+    }
+
+    return skybox_get_exposure(handle->skybox);
+}
+
+void scene_set_skybox_exposure(scene_handle handle, float exposure) {
+    if (!handle->skybox_enabled) {
+        return;
+    }
+
+    skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 3.0f));
+}
+
 
 void scene_delete(scene_handle handle) {
     for(int32_t i=0; i<handle->textures_count; ++i)

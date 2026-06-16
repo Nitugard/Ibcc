@@ -24,6 +24,7 @@
 #include "GlMath.h"
 
 #define MAXIMUM_WINDOW_LOGS 1024
+#define DEFAULT_SKYBOX_PATH "./Data/skyboxes/machine_shop_02/"
 
 typedef struct window_log_data{
     char* log;
@@ -102,6 +103,18 @@ static void window_view_options(void)
     bool show_gizmos = scene_view_get_gizmos_visible(views[0]);
     if (igCheckbox("Show gizmos", &show_gizmos))
         scene_view_set_gizmos_visible(views[0], show_gizmos);
+
+    bool show_skybox = scene_get_skybox_render(active_scene);
+    if (igCheckbox("Show skybox", &show_skybox)) {
+        scene_set_skybox_render(active_scene, show_skybox);
+        scene_view_flag_dirty(views[0]);
+    }
+
+    float skybox_exposure = scene_get_skybox_exposure(active_scene);
+    if (igSliderFloat("Skybox Exposure", &skybox_exposure, 0.1f, 3.0f, "%.2f", 0)) {
+        scene_set_skybox_exposure(active_scene, skybox_exposure);
+        scene_view_flag_dirty(views[0]);
+    }
 
     bool wireframe = scene_view_get_wireframe(views[0]);
     if (igCheckbox("Wireframe shading", &wireframe))
@@ -624,7 +637,7 @@ void window_init(struct window_config const* config) {
     model = mdl_load("./Data/Manipulator.gltf");
     scene_desc desc = {
             .skybox = {
-                    .path = "./Data/skybox/",
+                    .path = DEFAULT_SKYBOX_PATH,
                     .render = true,
             },
             .model = model,
@@ -655,7 +668,7 @@ void window_run() {
         window_manipulator_demo();
 
 #ifndef NDEBUG
-        window_log();
+        //window_log();
 #endif
 
         int32_t width, height;

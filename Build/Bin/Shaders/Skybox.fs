@@ -1,15 +1,16 @@
 #version 330
 
 uniform samplerCube skybox;
+uniform float exposure;
 
 varying vec3 frag_vertex_uv;
 
 void main() {
     vec3 dir = normalize(frag_vertex_uv);
-    vec3 env = texture(skybox, dir).rgb;
+    vec3 env = texture(skybox, dir).rgb * exposure;
     vec3 fallback = mix(vec3(0.08, 0.09, 0.10),
                         vec3(0.35, 0.45, 0.60),
                         clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
-    env = max(env, fallback);
+    env = max(env, fallback * exposure);
     gl_FragColor = vec4(pow(max(env, 0.0), vec3(1.0 / 2.2)), 1.0);
 }

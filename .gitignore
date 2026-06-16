@@ -16,6 +16,12 @@ Build/Bin/Data/*
 Build/Bin/Data/skybox/*
 !Build/Bin/Data/skybox/*.jpg
 !Build/Bin/Data/skybox/*.png
+!Build/Bin/Data/skyboxes/
+Build/Bin/Data/skyboxes/*
+!Build/Bin/Data/skyboxes/*/
+Build/Bin/Data/skyboxes/*/*
+!Build/Bin/Data/skyboxes/**/*.jpg
+!Build/Bin/Data/skyboxes/**/*.png
 .idea/*
 /cmake-build-codex
 .aicodeprep-gui

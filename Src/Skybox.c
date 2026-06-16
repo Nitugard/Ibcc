@@ -25,6 +25,8 @@ typedef struct skybox_data {
     int32_t view_uniform;
     int32_t projection_uniform;
     int32_t skybox_uniform;
+    int32_t exposure_uniform;
+    float exposure;
     gfx_shader_handle shader;
 } skybox_data;
 
@@ -41,14 +43,15 @@ skybox_handle skybox_load(const char* path) {
     skybox_handle handle = OS_MALLOC(sizeof(struct skybox_data));
 
     const char *names[6] = {
-            "right.jpg",
-            "left.jpg",
-            "top.jpg",
-            "bottom.jpg",
-            "front.jpg",
-            "back.jpg"
+            "px.png",
+            "nx.png",
+            "py.png",
+            "ny.png",
+            "pz.png",
+            "nz.png"
     };
     handle->shader = gfx_shader_create("Skybox");
+    handle->exposure = 1.0f;
     handle->cubemap_texture = gfx_texture_cubemap_create(path, names, GFX_TEXTURE_TYPE_RGB, GFX_TEXTURE_FILTER_LINEAR);
     handle->buffer = gfx_buffer_create(GFX_BUFFER_VERTEX, GFX_BUFFER_UPDATE_STATIC_DRAW, box_vertices,
                                        sizeof(box_vertices));
@@ -63,6 +66,7 @@ skybox_handle skybox_load(const char* path) {
     gfx_shader_uniform_enable(handle->shader, VIEW_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &handle->view_uniform);
     gfx_shader_uniform_enable(handle->shader, PROJECTION_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &handle->projection_uniform);
     gfx_shader_uniform_enable(handle->shader, "skybox", GFX_TYPE_SAMPLER_CUBE, &handle->skybox_uniform);
+    gfx_shader_uniform_enable(handle->shader, "exposure", GFX_TYPE_FLOAT_VEC_1, &handle->exposure_uniform);
 
     handle->pip = gfx_pipeline_create(handle->shader);
     gfx_pipeline_attr_enable(handle->pip, ATTR_POSITION_NAME, handle->buffer, 3, 0,
@@ -87,9 +91,20 @@ void skybox_render(skybox_handle handle, float projection[16], float view[16]) {
     gfx_shader_uniform_set(handle->shader, handle->projection_uniform, projection);
     int32_t texture_unit = 0;
     gfx_shader_uniform_set(handle->shader, handle->skybox_uniform, &texture_unit);
+    gfx_shader_uniform_set(handle->shader, handle->exposure_uniform, &handle->exposure);
     gfx_draw(GFX_TRIANGLES, 0, 36);
     gfx_cull_enable(true);
     gfx_depth_test_enable(true);
+}
+
+float skybox_get_exposure(skybox_handle handle) {
+    CORE_ASSERT(handle != 0 && "Invalid skybox pointer");
+    return handle->exposure;
+}
+
+void skybox_set_exposure(skybox_handle handle, float exposure) {
+    CORE_ASSERT(handle != 0 && "Invalid skybox pointer");
+    handle->exposure = exposure;
 }
 
 void skybox_destroy(skybox_handle handle) {
