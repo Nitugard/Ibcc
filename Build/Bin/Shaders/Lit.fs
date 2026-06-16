@@ -11,6 +11,7 @@ uniform samplerCube skybox;
 uniform vec3  base_color;
 uniform float roughness;
 uniform float metallic;
+uniform float exposure;
 
 uniform sampler2D shadow_map;
 uniform mat4      light_space;
@@ -71,10 +72,11 @@ void main()
     vec3  specular  = spec_tint * pow(NdotH, shininess) * NdotL * sun * spec_str;
 
     float shadow = shadow_calc(NdotL);
-    vec3 dielectric = diffuse + specular;
-    vec3 metal_reflection = env * base_color * (1.0 - r * 0.7);
-    vec3 result = ambient + (1.0 - shadow) * mix(dielectric, metal_reflection + specular, m);
+    float reflection_strength = m * (1.0 - r * 0.8);
+    vec3 reflection = env * base_color * reflection_strength;
+    vec3 result = ambient + (1.0 - shadow) * (diffuse + specular + reflection);
 
-    result = pow(max(result, 0.0), vec3(1.0 / 2.2));
+    result = vec3(1.0) - exp(-max(result, 0.0) * exposure);
+    result = pow(result, vec3(1.0 / 2.2));
     gl_FragColor = vec4(result, 1.0);
 }

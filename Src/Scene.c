@@ -56,6 +56,7 @@ typedef struct scene_internal_pbr_material{
     int32_t metallic_uniform;
     int32_t color_uniform;
     int32_t skybox_uniform;
+    int32_t exposure_uniform;
     int32_t shadow_map_uniform;
     int32_t light_space_uniform;
 
@@ -146,7 +147,7 @@ typedef struct scene_internal_data{
     gfx_buffer_handle   ground_ibuf;
     int32_t gnd_model_u, gnd_proj_u, gnd_view_u, gnd_viewpos_u;
     int32_t gnd_roughness_u, gnd_metallic_u, gnd_color_u;
-    int32_t gnd_skybox_u, gnd_shadowmap_u, gnd_lightspace_u;
+    int32_t gnd_skybox_u, gnd_exposure_u, gnd_shadowmap_u, gnd_lightspace_u;
 } scene_internal_data;
 
 scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_shader_handle shadow_shader, mdl_primitive primitive) {
@@ -319,6 +320,7 @@ scene_handle scene_new(scene_desc const* desc) {
         gfx_shader_uniform_enable(mat->shader, "metallic", GFX_TYPE_FLOAT_VEC_1, &mat->metallic_uniform );
         gfx_shader_uniform_enable(mat->shader, "base_color", GFX_TYPE_FLOAT_VEC_3, &mat->color_uniform);
         gfx_shader_uniform_enable(mat->shader, "skybox", GFX_TYPE_SAMPLER_CUBE, &mat->skybox_uniform);
+        gfx_shader_uniform_enable(mat->shader, "exposure", GFX_TYPE_FLOAT_VEC_1, &mat->exposure_uniform);
 
     }
     OS_FREE(vs);
@@ -407,6 +409,7 @@ scene_handle scene_new(scene_desc const* desc) {
         gfx_shader_uniform_enable(handle->ground_shader, "metallic",                GFX_TYPE_FLOAT_VEC_1, &handle->gnd_metallic_u);
         gfx_shader_uniform_enable(handle->ground_shader, "base_color",              GFX_TYPE_FLOAT_VEC_3, &handle->gnd_color_u);
         gfx_shader_uniform_enable(handle->ground_shader, "skybox",                  GFX_TYPE_SAMPLER_CUBE, &handle->gnd_skybox_u);
+        gfx_shader_uniform_enable(handle->ground_shader, "exposure",                GFX_TYPE_FLOAT_VEC_1, &handle->gnd_exposure_u);
         gfx_shader_uniform_enable(handle->ground_shader, "shadow_map",              GFX_TYPE_SAMPLER_2D, &handle->gnd_shadowmap_u);
         gfx_shader_uniform_enable(handle->ground_shader, "light_space",             GFX_TYPE_FLOAT_MAT_4, &handle->gnd_lightspace_u);
     }
@@ -564,6 +567,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     gl_vec3 view_pos = gl_mat_get_translation(world_tr);
     int32_t texture_unit = 0;
     int32_t shadow_unit  = 1;
+    float exposure = handle->skybox_enabled ? skybox_get_exposure(handle->skybox) : 1.0f;
     if(handle->skybox_enabled) {
         skybox_bind(handle->skybox);  /* binds cubemap to unit 0 */
     }
@@ -595,6 +599,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->rougness_uniform, &mat->roughness_factor);
                 gfx_shader_uniform_set(mat->shader, mat->metallic_uniform, &mat->metallic_factor);
                 gfx_shader_uniform_set(mat->shader, mat->skybox_uniform, &texture_unit);
+                gfx_shader_uniform_set(mat->shader, mat->exposure_uniform, &exposure);
                 gfx_shader_uniform_set(mat->shader, mat->shadow_map_uniform, &shadow_unit);
                 gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->light_space_matrix.data);
 
@@ -620,6 +625,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
         gfx_shader_uniform_set(handle->ground_shader, handle->gnd_metallic_u,  &gnd_metal);
         gfx_shader_uniform_set(handle->ground_shader, handle->gnd_color_u,     gnd_col);
         gfx_shader_uniform_set(handle->ground_shader, handle->gnd_skybox_u,    &texture_unit);
+        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_exposure_u,  &exposure);
         gfx_shader_uniform_set(handle->ground_shader, handle->gnd_shadowmap_u, &shadow_unit);
         gfx_shader_uniform_set(handle->ground_shader, handle->gnd_lightspace_u, handle->light_space_matrix.data);
         gfx_draw_id(GFX_TRIANGLES, 6);
@@ -649,7 +655,7 @@ void scene_set_skybox_exposure(scene_handle handle, float exposure) {
         return;
     }
 
-    skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 3.0f));
+    skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 5.0f));
 }
 
 

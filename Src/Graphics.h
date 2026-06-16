@@ -172,6 +172,7 @@ IBC_API void gfx_buffer_destroy(gfx_buffer_handle handle);
 IBC_API gfx_resource_status gfx_buffer_status(gfx_buffer_handle handle);
 
 IBC_API gfx_texture_handle gfx_texture_load(const char* path, enum gfx_texture_type type, enum gfx_texture_filter_mode filter, enum gfx_texture_wrap_mode wrap);
+IBC_API gfx_texture_handle gfx_texture_load_hdr(const char* path, enum gfx_texture_filter_mode filter, enum gfx_texture_wrap_mode wrap);
 IBC_API gfx_texture_handle gfx_texture_create(int32_t width, int32_t height, void* data, enum gfx_texture_type type, enum gfx_texture_filter_mode filter, enum gfx_texture_wrap_mode wrap);
 IBC_API int32_t gfx_texture_get_id(gfx_texture_handle handle);
 IBC_API void gfx_texture_bind(gfx_texture_handle handle, int32_t slot);
@@ -179,6 +180,8 @@ IBC_API void gfx_texture_destroy(gfx_texture_handle handle);
 IBC_API gfx_resource_status gfx_texture_status(gfx_texture_handle handle);
 
 IBC_API gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const char* names[6], enum gfx_texture_type type, enum gfx_texture_filter_mode filter);
+IBC_API gfx_texture_cubemap_handle gfx_texture_cubemap_create_empty_hdr(int32_t size);
+IBC_API int32_t gfx_texture_cubemap_get_id(gfx_texture_cubemap_handle handle);
 IBC_API void gfx_texture_cubemap_bind(gfx_texture_cubemap_handle handle);
 IBC_API void gfx_texture_cubemap_destroy(gfx_texture_cubemap_handle handle);
 

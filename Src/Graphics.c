@@ -1069,6 +1069,22 @@ gfx_texture_handle gfx_texture_load(const char* path, enum gfx_texture_type type
     return handle;
 }
 
+gfx_texture_handle gfx_texture_load_hdr(const char* path, enum gfx_texture_filter_mode filter, enum gfx_texture_wrap_mode wrap) {
+
+    int32_t width, height, channels;
+    stbi_set_flip_vertically_on_load(true);
+    float* data = stbi_loadf(path, &width, &height, &channels, 3);
+    stbi_set_flip_vertically_on_load(false);
+
+    CORE_ASSERT(data != 0 && "HDR texture load failed");
+
+    LOG("HDR image loaded, path: %s, width:%i, height:%i, channels:%i \n", path, width, height, 3);
+    gfx_texture_handle tex = gfx_texture_create(width, height, data, GFX_TEXTURE_TYPE_RGB16, filter, wrap);
+
+    stbi_image_free(data);
+    return tex;
+}
+
  int32_t gfx_texture_get_id(gfx_texture_handle handle){
     return handle->id;
 }
@@ -1144,6 +1160,39 @@ gfx_texture_cubemap_handle gfx_texture_cubemap_create(const char* path, const ch
     gfx_texture_cubemap_handle hndl = OS_MALLOC(sizeof(gfx_texture_cubemap));
     hndl->texture.id = id;
     return hndl;
+}
+
+gfx_texture_cubemap_handle gfx_texture_cubemap_create_empty_hdr(int32_t size) {
+    uint32_t texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+
+    for (uint32_t i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                     0,
+                     GL_RGB16F,
+                     size,
+                     size,
+                     0,
+                     GL_RGB,
+                     GL_FLOAT,
+                     0);
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    gfx_texture_cubemap_handle hndl = OS_MALLOC(sizeof(gfx_texture_cubemap));
+    hndl->texture.id = texture;
+    return hndl;
+}
+
+int32_t gfx_texture_cubemap_get_id(gfx_texture_cubemap_handle handle) {
+    return handle->texture.id;
 }
 
 void gfx_texture_bind(gfx_texture_handle hndl, int32_t index) {

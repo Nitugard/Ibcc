@@ -24,7 +24,7 @@
 #include "GlMath.h"
 
 #define MAXIMUM_WINDOW_LOGS 1024
-#define DEFAULT_SKYBOX_PATH "./Data/skyboxes/machine_shop_02/"
+#define DEFAULT_SKYBOX_PATH "./Data/studio_small_08_4k.hdr"
 
 typedef struct window_log_data{
     char* log;
@@ -111,7 +111,7 @@ static void window_view_options(void)
     }
 
     float skybox_exposure = scene_get_skybox_exposure(active_scene);
-    if (igSliderFloat("Skybox Exposure", &skybox_exposure, 0.1f, 3.0f, "%.2f", 0)) {
+    if (igSliderFloat("HDR Exposure", &skybox_exposure, 0.1f, 5.0f, "%.2f", 0)) {
         scene_set_skybox_exposure(active_scene, skybox_exposure);
         scene_view_flag_dirty(views[0]);
     }

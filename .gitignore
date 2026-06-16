@@ -12,6 +12,7 @@ Build/Bin/**/*
 !Build/Bin/**/*.hlsl
 !Build/Bin/Data/
 Build/Bin/Data/*
+!Build/Bin/Data/*.hdr
 !Build/Bin/Data/skybox/
 Build/Bin/Data/skybox/*
 !Build/Bin/Data/skybox/*.jpg
@@ -22,6 +23,9 @@ Build/Bin/Data/skyboxes/*
 Build/Bin/Data/skyboxes/*/*
 !Build/Bin/Data/skyboxes/**/*.jpg
 !Build/Bin/Data/skyboxes/**/*.png
+!Build/Bin/Data/hdri/
+Build/Bin/Data/hdri/*
+!Build/Bin/Data/hdri/*.hdr
 .idea/*
 /cmake-build-codex
 .aicodeprep-gui
