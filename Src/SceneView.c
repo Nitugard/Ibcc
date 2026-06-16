@@ -48,7 +48,21 @@ typedef struct scene_view{
     wire_handle wire;
     scene_view_controller controller;
     char const* name;
-    bool dirty;
+
+    /*
+     * Granular dirty flags — render triggers:
+     *   camera_dirty   : camera controller moved, FOV/type/wireframe changed
+     *   viewport_dirty : FBO was resized
+     *   scene_dirty    : external scene change (manipulator moved a node)
+     *
+     * Re-render when any flag is set; clear all after render.
+     * shadow_dirty lives in the Window run-loop (shadows belong to the scene/light,
+     * not to a particular viewport).
+     */
+    bool camera_dirty;
+    bool viewport_dirty;
+    bool scene_dirty;
+
     bool gizmos_visible;
     bool wireframe;
     enum scene_view_type view_type;
@@ -132,7 +146,7 @@ scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_ty
     handle->name = view_type_to_string(view_type);
     handle->width = width;
     handle->height = height;
-    handle->dirty = true;
+    handle->camera_dirty = true;
     handle->gizmos_visible = true;
     handle->wireframe = false;
     handle->wire = wire_new(512);
@@ -164,13 +178,18 @@ scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_ty
 
     scene_view_controller_apply_view_type(handle);
     scene_view_controller_update_projection(handle);
+
+    /* Trigger a full render on the first frame */
+    handle->camera_dirty   = true;
+    handle->viewport_dirty = false;
+    handle->scene_dirty    = false;
+
     return handle;
 }
 
 void scene_view_update_controller(scene_view_handle handle) {
 
     device_joystick joystick = device_joystick_get();
-    float dt = device_dt_get();
     bool has_changed_position = false;
     bool has_changed_projection = false;
 
@@ -214,19 +233,17 @@ void scene_view_update_controller(scene_view_handle handle) {
     if(has_changed_position)
     {
         scene_view_controller_update_internal(handle);
-        handle->dirty = true;
+        handle->camera_dirty = true;
     }
 
     if(has_changed_projection){
         scene_view_controller_update_projection(handle);
-        handle->dirty = true;
+        handle->camera_dirty = true;
     }
 }
 
 void scene_view_render(scene_view_handle handle,void* scene) {
-    if (handle->dirty) {
-        /* Depth-only shadow pre-pass (renders to shadow FBO before main scene) */
-        scene_shadow_pass(scene);
+    if (handle->camera_dirty || handle->viewport_dirty || handle->scene_dirty) {
 
         gfx_begin_pass(handle->fbo, GFX_PASS_OPTION_DEPTH_TEST | GFX_PASS_OPTION_CULL_BACK,
                        GFX_PASS_ACTION_CLEAR_DEPTH | GFX_PASS_ACTION_CLEAR_COLOR,
@@ -250,7 +267,9 @@ void scene_view_render(scene_view_handle handle,void* scene) {
         }
         gfx_end_pass();
 
-        handle->dirty = false;
+        handle->camera_dirty   = false;
+        handle->viewport_dirty = false;
+        handle->scene_dirty    = false;
     }
 }
 
@@ -277,7 +296,8 @@ void scene_view_resize(scene_view_handle handle, int32_t w, int32_t h) {
 
         handle->width = w;
         handle->height = h;
-        handle->dirty = true;
+        handle->viewport_dirty = true;
+        handle->camera_dirty   = true;  /* projection aspect ratio changed */
 
         if(w != 0 && h != 0) {
             gfx_texture_destroy(handle->color_tex);
@@ -310,7 +330,7 @@ void scene_view_set_type(scene_view_handle handle, scene_view_type view_type) {
     scene_view_controller_apply_view_type(handle);
 
     scene_view_controller_update_projection(handle);
-    handle->dirty = true;
+    handle->camera_dirty = true;
 }
 
 float scene_view_get_fov(scene_view_handle handle) {
@@ -328,7 +348,7 @@ void scene_view_set_fov(scene_view_handle handle, float fov) {
 
     handle->controller.fov = fov;
     scene_view_controller_update_projection(handle);
-    handle->dirty = true;
+    handle->camera_dirty = true;
 }
 
 bool scene_view_get_gizmos_visible(scene_view_handle handle) {
@@ -341,7 +361,7 @@ void scene_view_set_gizmos_visible(scene_view_handle handle, bool visible) {
     }
 
     handle->gizmos_visible = visible;
-    handle->dirty = true;
+    handle->camera_dirty = true;
 }
 
 bool scene_view_get_wireframe(scene_view_handle handle) {
@@ -354,7 +374,7 @@ void scene_view_set_wireframe(scene_view_handle handle, bool enabled) {
     }
 
     handle->wireframe = enabled;
-    handle->dirty = true;
+    handle->camera_dirty = true;
 }
 
 void scene_view_destroy(scene_view_handle handle){
@@ -370,5 +390,5 @@ char const* scene_view_get_name(scene_view_handle handle){
 }
 
 void scene_view_flag_dirty(scene_view_handle handle) {
-    handle->dirty = true;
+    handle->scene_dirty = true;
 }

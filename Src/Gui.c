@@ -26,6 +26,46 @@ void gui_init() {
     io = igGetIO();
     io->IniFilename = NULL;
 
+    /*
+     * Load a system font that covers Serbian Latin characters
+     * (č ć đ š ž — Unicode Latin Extended-A, U+0100–U+017F).
+     * ProggyClean (the ImGui default) only covers ASCII.
+     * We try several common Windows font paths; fall back to the
+     * built-in pixel font if none is found.
+     */
+    {
+        static const char* candidates[] = {
+            "C:/Windows/Fonts/segoeui.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/calibri.ttf",
+            NULL
+        };
+
+        /* Build glyph range: Basic Latin + Latin Extended-A (covers all Serbian diacritics) */
+        static ImWchar ranges[] = {
+            0x0020, 0x00FF,  /* Basic Latin + Latin-1 Supplement */
+            0x0100, 0x017F,  /* Latin Extended-A (č ć đ š ž and friends) */
+            0,               /* terminator */
+        };
+
+        ImFontAtlas* atlas = io->Fonts;
+        bool loaded = false;
+        for (int i = 0; candidates[i] != NULL && !loaded; ++i) {
+            FILE* f = fopen(candidates[i], "rb");
+            if (f) {
+                fclose(f);
+                /* NULL config → use ImGui defaults (oversample 3×1, no hinting tweaks) */
+                ImFontAtlas_AddFontFromFileTTF(atlas, candidates[i], 15.0f, NULL, ranges);
+                loaded = true;
+            }
+        }
+
+        if (!loaded) {
+            /* Fallback: ImGui built-in font — no diacritics, but at least it renders */
+            ImFontAtlas_AddFontDefault(atlas, NULL);
+        }
+    }
+
     const char *glsl_version = "#version 330 core";
     ImGui_ImplGlfw_InitForOpenGL(device_window_handle(), true);
     ImGui_ImplOpenGL3_Init(glsl_version);

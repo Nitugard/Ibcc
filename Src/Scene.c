@@ -13,11 +13,11 @@
 #include "Skybox.h"
 #include "Shaders/Common.h"
 #include "Wire.h"
+#include "ShadowRenderer.h"
+#include "GroundRenderer.h"
 
 #include <string.h>
 #include <stdio.h>
-
-#define SHADOW_MAP_SIZE 1024
 
 typedef struct scene_internal_node {
     char* name;
@@ -133,22 +133,8 @@ typedef struct scene_internal_data{
     bool skybox_render;
     bool plane_render;
 
-    /* Shadow pass resources */
-    gfx_shader_handle    shadow_shader;
-    gfx_texture_handle   shadow_depth_tex;
-    gfx_framebuffer_handle shadow_fbo;
-    gl_mat               light_space_matrix;
-    int32_t              shd_model_uniform;
-    int32_t              shd_ls_uniform;
-
-    /* Ground plane */
-    gfx_shader_handle   ground_shader;
-    gfx_pipeline_handle ground_pipeline;
-    gfx_buffer_handle   ground_vbuf;
-    gfx_buffer_handle   ground_ibuf;
-    int32_t gnd_model_u, gnd_proj_u, gnd_view_u, gnd_viewpos_u;
-    int32_t gnd_roughness_u, gnd_metallic_u, gnd_color_u;
-    int32_t gnd_skybox_u, gnd_exposure_u, gnd_shadowmap_u, gnd_lightspace_u;
+    shadow_renderer shadow;
+    ground_renderer ground;
 } scene_internal_data;
 
 scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_shader_handle shadow_shader, mdl_primitive primitive) {
@@ -329,92 +315,21 @@ scene_handle scene_new(scene_desc const* desc) {
     OS_FREE(fs);
 
     /*
-     * Shadow pass setup — depth shader, FBO, and light-space matrix.
+     * Shadow renderer — owns depth FBO + shader + light-space matrix.
      */
-    {
-        gfx_shader_handle shd = gfx_shader_create("Shadow");
-        void* shd_vs = device_file_read_text("./Shaders/Shadow.vs");
-        void* shd_fs = device_file_read_text("./Shaders/Shadow.fs");
-        gfx_shader_add_vs(shd, shd_vs);
-        gfx_shader_add_fs(shd, shd_fs);
-        gfx_shader_submit(shd);
-        OS_FREE(shd_vs);
-        OS_FREE(shd_fs);
-        handle->shadow_shader = shd;
+    shadow_renderer_init(&handle->shadow);
 
-        gfx_shader_uniform_enable(shd, MODEL_TRANSFORM_NAME,  GFX_TYPE_FLOAT_MAT_4, &handle->shd_model_uniform);
-        gfx_shader_uniform_enable(shd, "light_space",         GFX_TYPE_FLOAT_MAT_4, &handle->shd_ls_uniform);
-
-        handle->shadow_depth_tex = gfx_texture_create(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, NULL,
-                                                      GFX_TEXTURE_TYPE_DEPTH, GFX_TEXTURE_FILTER_NEAREST,
-                                                      GFX_TEXTURE_WRAP_CLAMP);
-        handle->shadow_fbo = gfx_framebuffer_create(NULL, handle->shadow_depth_tex);
-
-        /* Orthographic light from sun direction normalize(1,2,1) */
-        gl_vec3 sun_dir   = gl_vec3_normalize(gl_vec3_new(1.0f, 2.0f, 1.0f));
-        gl_vec3 light_pos = gl_vec3_new(sun_dir.x * 15.0f, sun_dir.y * 15.0f, sun_dir.z * 15.0f);
-        gl_vec3 target    = gl_vec3_new(0.0f, 2.0f, 0.0f);
-        gl_vec3 up        = gl_vec3_new(1.0f, 0.0f, 0.0f);  /* avoid Y-parallel with sun */
-        /* gl_mat_look_at takes (forward_dir, eye, up) — compute direction toward target */
-        gl_vec3 forward   = gl_vec3_normalize(gl_vec3_sub(target, light_pos));
-        gl_mat  lv = gl_mat_look_at(forward, light_pos, up);
-        gl_mat  lp = gl_mat_ortographic(-8.0f, 8.0f, -8.0f, 8.0f, 0.5f, 50.0f);
-        handle->light_space_matrix = gl_mat_mul(lp, lv);
-
-        /* Register shadow uniforms in every Lit material */
-        for (uint32_t i = 0; i < handle->materials_count; ++i) {
-            scene_internal_pbr_material *mat = handle->materials + i;
-            gfx_shader_uniform_enable(mat->shader, "shadow_map", GFX_TYPE_SAMPLER_2D, &mat->shadow_map_uniform);
-            gfx_shader_uniform_enable(mat->shader, "light_space", GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
-        }
+    /* Register shadow uniforms in every Lit material */
+    for (uint32_t i = 0; i < handle->materials_count; ++i) {
+        scene_internal_pbr_material *mat = handle->materials + i;
+        gfx_shader_uniform_enable(mat->shader, "shadow_map",  GFX_TYPE_SAMPLER_2D,  &mat->shadow_map_uniform);
+        gfx_shader_uniform_enable(mat->shader, "light_space", GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
     }
 
     /*
-     * Ground plane — 20x20 quad at y=0, receives shadow.
-     * Vertex layout: pos(3) normal(3) tangent(4) color(4) = 14 floats, stride 56 bytes.
+     * Ground renderer — owns 20×20 quad + Lit shader instance.
      */
-    {
-        float gv[] = {
-            -10.0f,0.0f,-10.0f, 0.0f,1.0f,0.0f, 1.0f,0.0f,0.0f,1.0f, 1.0f,1.0f,1.0f,1.0f,
-             10.0f,0.0f,-10.0f, 0.0f,1.0f,0.0f, 1.0f,0.0f,0.0f,1.0f, 1.0f,1.0f,1.0f,1.0f,
-             10.0f,0.0f, 10.0f, 0.0f,1.0f,0.0f, 1.0f,0.0f,0.0f,1.0f, 1.0f,1.0f,1.0f,1.0f,
-            -10.0f,0.0f, 10.0f, 0.0f,1.0f,0.0f, 1.0f,0.0f,0.0f,1.0f, 1.0f,1.0f,1.0f,1.0f,
-        };
-        uint32_t gi[] = {0,2,1, 0,3,2};
-        int stride = 14 * (int)sizeof(float);
-
-        handle->ground_vbuf = gfx_buffer_create(GFX_BUFFER_VERTEX, GFX_BUFFER_UPDATE_STATIC_DRAW, gv, sizeof(gv));
-        handle->ground_ibuf = gfx_buffer_create(GFX_BUFFER_INDEX,  GFX_BUFFER_UPDATE_STATIC_DRAW, gi, sizeof(gi));
-
-        void* gvs = device_file_read_text("./Shaders/Lit.vs");
-        void* gfs = device_file_read_text("./Shaders/Lit.fs");
-        handle->ground_shader = gfx_shader_create("Ground");
-        gfx_shader_add_vs(handle->ground_shader, gvs);
-        gfx_shader_add_fs(handle->ground_shader, gfs);
-        gfx_shader_submit(handle->ground_shader);
-        OS_FREE(gvs);
-        OS_FREE(gfs);
-
-        handle->ground_pipeline = gfx_pipeline_create(handle->ground_shader);
-        gfx_pipeline_attr_enable(handle->ground_pipeline, ATTR_POSITION_NAME, handle->ground_vbuf, 3,  0,           stride);
-        gfx_pipeline_attr_enable(handle->ground_pipeline, ATTR_NORMAL_NAME,   handle->ground_vbuf, 3,  3*sizeof(float), stride);
-        gfx_pipeline_attr_enable(handle->ground_pipeline, ATTR_TANGENT_NAME,  handle->ground_vbuf, 4,  6*sizeof(float), stride);
-        gfx_pipeline_attr_enable(handle->ground_pipeline, ATTR_COLOR_NAME,    handle->ground_vbuf, 4, 10*sizeof(float), stride);
-        gfx_pipeline_index_enable(handle->ground_pipeline, handle->ground_ibuf);
-        gfx_pipeline_submit(handle->ground_pipeline);
-
-        gfx_shader_uniform_enable(handle->ground_shader, MODEL_TRANSFORM_NAME,      GFX_TYPE_FLOAT_MAT_4, &handle->gnd_model_u);
-        gfx_shader_uniform_enable(handle->ground_shader, PROJECTION_TRANSFORM_NAME, GFX_TYPE_FLOAT_MAT_4, &handle->gnd_proj_u);
-        gfx_shader_uniform_enable(handle->ground_shader, VIEW_TRANSFORM_NAME,       GFX_TYPE_FLOAT_MAT_4, &handle->gnd_view_u);
-        gfx_shader_uniform_enable(handle->ground_shader, VIEW_POSITION_NAME,        GFX_TYPE_FLOAT_VEC_3, &handle->gnd_viewpos_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "roughness",               GFX_TYPE_FLOAT_VEC_1, &handle->gnd_roughness_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "metallic",                GFX_TYPE_FLOAT_VEC_1, &handle->gnd_metallic_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "base_color",              GFX_TYPE_FLOAT_VEC_3, &handle->gnd_color_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "skybox",                  GFX_TYPE_SAMPLER_CUBE, &handle->gnd_skybox_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "exposure",                GFX_TYPE_FLOAT_VEC_1, &handle->gnd_exposure_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "shadow_map",              GFX_TYPE_SAMPLER_2D, &handle->gnd_shadowmap_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "light_space",             GFX_TYPE_FLOAT_MAT_4, &handle->gnd_lightspace_u);
-    }
+    ground_renderer_init(&handle->ground);
 
     /*
      * Loading of the meshes.
@@ -432,7 +347,7 @@ scene_handle scene_new(scene_desc const* desc) {
             if(m_mesh->primitives[j].material_id < 0 || m_mesh->primitives[j].material_id >= handle->materials_count)
                 m_mesh->primitives[j].material_id = 0;
 
-            mesh->primitives[j] = scene_new_primitive(handle->materials[m_mesh->primitives[j].material_id].shader, handle->shadow_shader, m_mesh->primitives[j]);
+            mesh->primitives[j] = scene_new_primitive(handle->materials[m_mesh->primitives[j].material_id].shader, handle->shadow.shader, m_mesh->primitives[j]);
         }
     }
 
@@ -527,20 +442,21 @@ scene_handle scene_new(scene_desc const* desc) {
 }
 
 void scene_shadow_pass(scene_handle handle) {
+    shadow_renderer* sr = &handle->shadow;
     static float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    gfx_begin_pass(handle->shadow_fbo,
+    gfx_begin_pass(sr->fbo,
                    GFX_PASS_OPTION_DEPTH_TEST | GFX_PASS_OPTION_CULL_BACK,
                    GFX_PASS_ACTION_CLEAR_DEPTH, black);
     gfx_viewport_set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
 
     for (int32_t i = 0; i < handle->meshes_count; ++i) {
-        scene_internal_mesh *mesh = handle->meshes + i;
+        scene_internal_mesh *mesh      = handle->meshes + i;
         scene_internal_node  mesh_node = handle->nodes[mesh->node_index];
         for (int32_t j = 0; j < mesh->primitives_count; ++j) {
             scene_internal_mesh_primitive *prim = mesh->primitives + j;
             gfx_pipeline_bind(prim->shadow_pipeline);
-            gfx_shader_uniform_set(handle->shadow_shader, handle->shd_model_uniform, mesh_node.world_tr.data);
-            gfx_shader_uniform_set(handle->shadow_shader, handle->shd_ls_uniform,    handle->light_space_matrix.data);
+            gfx_shader_uniform_set(sr->shader, sr->model_uniform, mesh_node.world_tr.data);
+            gfx_shader_uniform_set(sr->shader, sr->ls_uniform,    sr->light_space.data);
             gfx_draw_id(prim->draw_type, prim->indices_count);
         }
     }
@@ -573,7 +489,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     if(handle->skybox_enabled) {
         skybox_bind(handle->skybox);  /* binds cubemap to unit 0 */
     }
-    gfx_texture_bind(handle->shadow_depth_tex, shadow_unit);  /* shadow map on unit 1 */
+    gfx_texture_bind(handle->shadow.depth_tex, shadow_unit);  /* shadow map on unit 1 */
 
     if(handle->skybox_enabled && handle->skybox_render && draw_skybox){
         skybox_render(handle->skybox, projection, view_no_tr.data);
@@ -602,8 +518,8 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->metallic_uniform, &mat->metallic_factor);
                 gfx_shader_uniform_set(mat->shader, mat->skybox_uniform, &texture_unit);
                 gfx_shader_uniform_set(mat->shader, mat->exposure_uniform, &exposure);
-                gfx_shader_uniform_set(mat->shader, mat->shadow_map_uniform, &shadow_unit);
-                gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->light_space_matrix.data);
+                gfx_shader_uniform_set(mat->shader, mat->shadow_map_uniform,  &shadow_unit);
+                gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->shadow.light_space.data);
 
             }
 
@@ -613,24 +529,10 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
 
     /* Ground plane — drawn after manipulator so z-fighting is avoided */
     if (handle->plane_render) {
-        gl_mat  model_id   = gl_mat_new_identity();
-        float   gnd_col[3] = {0.50f, 0.50f, 0.48f};
-        float   gnd_rough  = 0.92f;
-        float   gnd_metal  = 0.0f;
-
-        gfx_pipeline_bind(handle->ground_pipeline);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_model_u,     model_id.data);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_proj_u,      projection);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_view_u,      view.data);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_viewpos_u,   view_pos.data);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_roughness_u, &gnd_rough);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_metallic_u,  &gnd_metal);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_color_u,     gnd_col);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_skybox_u,    &texture_unit);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_exposure_u,  &exposure);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_shadowmap_u, &shadow_unit);
-        gfx_shader_uniform_set(handle->ground_shader, handle->gnd_lightspace_u, handle->light_space_matrix.data);
-        gfx_draw_id(GFX_TRIANGLES, 6);
+        ground_renderer_render(&handle->ground,
+                               projection, view.data, view_pos.data,
+                               texture_unit, exposure,
+                               shadow_unit, handle->shadow.light_space.data);
     }
 
     gfx_wireframe_enable(false);
@@ -731,14 +633,8 @@ void scene_delete(scene_handle handle) {
     if(handle->skybox_enabled)
         skybox_destroy(handle->skybox);
 
-    gfx_shader_destroy(handle->shadow_shader);
-    gfx_texture_destroy(handle->shadow_depth_tex);
-    gfx_framebuffer_destroy(handle->shadow_fbo);
-
-    gfx_pipeline_destroy(handle->ground_pipeline);
-    gfx_buffer_destroy(handle->ground_vbuf);
-    gfx_buffer_destroy(handle->ground_ibuf);
-    gfx_shader_destroy(handle->ground_shader);
+    shadow_renderer_destroy(&handle->shadow);
+    ground_renderer_destroy(&handle->ground);
 
     OS_FREE(handle->root_nodes);
     OS_FREE(handle->nodes);

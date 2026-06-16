@@ -29,6 +29,7 @@
 #include "Model.h"
 #include "SceneView.h"
 #include "GlMath.h"
+#include "ManipulatorDemo.h"
 
 #define MAXIMUM_WINDOW_LOGS 1024
 #define MAXIMUM_SKYBOX_OPTIONS 32
@@ -58,11 +59,11 @@ typedef struct {
 } window_project_info;
 
 static window_project_info project_info = {
-    .project_name  = "Graficki prikaz manipulatora",
-    .student_name  = "Dragutin Sredojevic",
-    .professor_name= "Dusan Nedeljkovic",
+    .project_name  = "Grafi\xc4\x8dki prikaz manipulatora",   /* Grafički */
+    .student_name  = "Dragutin Sredojevi\xc4\x87",            /* Sredojević */
+    .professor_name = "Du\xc5\xa1" "an Nedeljkovi\xc4\x87", /* Dušan Nedeljković */
     .course_name   = "Kompjuterska grafika",
-    .faculty_name  = "Masinski fakultet",
+    .faculty_name  = "Ma\xc5\xa1inski fakultet",              /* Mašinski */
 };
 
 static float frame_dt = 0.0f;
@@ -270,9 +271,9 @@ static void window_view_options(void)
         scene_view_set_wireframe(views[0], wireframe);
 }
 
-static void window_manipulator_controls(void);   /* defined after motion vars */
 static void window_scene_view_overlay(void);
-static bool window_get_required_node(const char* name, scene_node* out_node);
+
+static manipulator_demo demo;
 
 void window_scene_view_draw(){
     int32_t ww, wh;
@@ -363,7 +364,7 @@ void window_scene_view_draw(){
             /* ---- Manipulator controls ---- */
             igTextDisabled("MANIPULATOR");
             igSpacing();
-            window_manipulator_controls();
+            manipulator_demo_draw_ui(&demo);
             igSeparator();
 
             /* ---- Camera control hints ---- */
@@ -407,348 +408,6 @@ void window_log(){
     igEnd();
 }
 
-gl_t nau02_loc = 1.38;
-int32_t nauo2_side = 1;
-
-float nauo2_speed = 1.0f;
-float nau01_rot_speed = 100.0f;
-
-float nau01_rot = 0.0f;
-float nau01_rot_dir = 1.0f;
-float rot_limit = 180.0f;
-
-const float nauo_speed = 1.0f;
-const float start_height = 2.857;
-const float end_height = 2.408;
-float target_height = start_height;
-int32_t nauo_side = 1;
-
-bool hold = false;
-bool release = false;
-const float tight = -0.031;
-const float relax_delta = 0.055;
-const float speed = 0.05f;
-
-typedef struct manipulator_initial_transform {
-    const char* name;
-    gl_mat local_tr;
-} manipulator_initial_transform;
-
-static manipulator_initial_transform manipulator_initial_transforms[] = {
-    {.name = "NAUO2"},
-    {.name = "NAUO2.001"},
-    {.name = "NAUO1.003"},
-    {.name = "NAUO3"},
-    {.name = "NAUO2.002"},
-};
-
-static bool manipulator_transforms_captured = false;
-static bool demo_autoplay = false;
-static int32_t demo_phase = 0;
-static float demo_phase_time = 0.0f;
-static bool demo_has_rotation_target = false;
-static float demo_rotation_target = 0.0f;
-
-static void window_capture_manipulator_initial_transforms(void)
-{
-    int32_t count = (int32_t)(sizeof(manipulator_initial_transforms) / sizeof(manipulator_initial_transforms[0]));
-    for (int32_t i = 0; i < count; ++i) {
-        scene_node node;
-        if (!window_get_required_node(manipulator_initial_transforms[i].name, &node)) {
-            return;
-        }
-
-        scene_node_get_local_tr(active_scene, &node, manipulator_initial_transforms[i].local_tr.data);
-    }
-
-    manipulator_transforms_captured = true;
-}
-
-static void window_reset_manipulator(void)
-{
-    if (!manipulator_transforms_captured) {
-        window_capture_manipulator_initial_transforms();
-    }
-
-    if (manipulator_transforms_captured) {
-        int32_t count = (int32_t)(sizeof(manipulator_initial_transforms) / sizeof(manipulator_initial_transforms[0]));
-        for (int32_t i = 0; i < count; ++i) {
-            scene_node node;
-            if (!window_get_required_node(manipulator_initial_transforms[i].name, &node)) {
-                return;
-            }
-
-            scene_node_set_local_tr(active_scene, &node, manipulator_initial_transforms[i].local_tr.data);
-        }
-    }
-
-    nauo2_side = 1;
-    nauo_side = 1;
-    target_height = start_height;
-    nau01_rot = 0.0f;
-    nau01_rot_dir = 0.0f;
-    hold = false;
-    release = false;
-    demo_autoplay = false;
-    demo_phase = 0;
-    demo_phase_time = 0.0f;
-    demo_has_rotation_target = false;
-    demo_rotation_target = 0.0f;
-    window_scene_views_mark_as_dirty();
-}
-
-static void window_autoplay_advance(void)
-{
-    demo_phase = (demo_phase + 1) % 6;
-    demo_phase_time = 0.0f;
-}
-
-static void window_update_autoplay(float dt)
-{
-    if (!demo_autoplay) {
-        demo_has_rotation_target = false;
-        return;
-    }
-
-    demo_phase_time += dt;
-    hold = false;
-    release = false;
-    demo_has_rotation_target = false;
-
-    switch (demo_phase) {
-        case 0:
-            nauo2_side = -1;
-            if (demo_phase_time >= 2.0f) window_autoplay_advance();
-            break;
-        case 1:
-            nauo_side = -1;
-            target_height = end_height;
-            if (demo_phase_time >= 1.8f) window_autoplay_advance();
-            break;
-        case 2:
-            demo_has_rotation_target = true;
-            demo_rotation_target = rot_limit;
-            if (gl_abs(nau01_rot - demo_rotation_target) <= 0.5f) window_autoplay_advance();
-            break;
-        case 3:
-            hold = true;
-            if (demo_phase_time >= 1.2f) window_autoplay_advance();
-            break;
-        case 4:
-            release = true;
-            if (demo_phase_time >= 1.2f) window_autoplay_advance();
-            break;
-        case 5:
-            nauo2_side = 1;
-            nauo_side = 1;
-            target_height = start_height;
-            demo_has_rotation_target = true;
-            demo_rotation_target = 0.0f;
-            if (demo_phase_time >= 2.2f && gl_abs(nau01_rot - demo_rotation_target) <= 0.5f) {
-                window_autoplay_advance();
-            }
-            break;
-    }
-}
-
-static void window_manipulator_controls(void)
-{
-    ImVec2 avail; igGetContentRegionAvail(&avail);
-    float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
-
-    if (igButton("Resetuj manipulator", (ImVec2){-1.0f, 0.0f}))
-        window_reset_manipulator();
-
-    if (igButton("Pokreni demo animaciju", (ImVec2){-1.0f, 0.0f})) {
-        demo_autoplay = true;
-        demo_phase = 0;
-        demo_phase_time = 0.0f;
-    }
-
-    if (igButton("Pauziraj", (ImVec2){-1.0f, 0.0f})) {
-        demo_autoplay = false;
-        hold = false;
-        release = false;
-        nau01_rot_dir = 0.0f;
-    }
-
-    igSeparator();
-
-    if (igButton("Pomeranje X", (ImVec2){-1.0f, 0.0f}))
-        nauo2_side *= -1;
-
-    bool rot_active = false;
-    igButton("Udesno",  (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
-    igSameLine(0.0f, -1.0f);
-    igButton("Ulevo", (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
-    if (!rot_active) nau01_rot_dir = 0.0f;
-
-    if (igButton("Pomeranje Y", (ImVec2){-1.0f, 0.0f})) {
-        nauo_side *= -1;
-        target_height = (nauo_side > 0) ? start_height : end_height;
-    }
-
-    igButton("Stisni",  (ImVec2){-1.0f, 0.0f}); hold    = igIsItemActive();
-    igButton("Otpusti", (ImVec2){-1.0f, 0.0f}); release = igIsItemActive();
-}
-
-static bool window_get_required_node(const char* name, scene_node* out_node)
-{
-    /*
-     * Centralized node lookup for the manipulator demo.
-     * If a node name changes in Blender/glTF export, this function prevents
-     * silent memory corruption and gives a clear console message.
-     */
-    if (active_scene == 0 || out_node == 0 || name == 0) {
-        fprintf(stderr, "Manipulator demo: invalid node lookup request\n");
-        return false;
-    }
-
-    if (!scene_node_get(active_scene, name, out_node)) {
-        fprintf(stderr, "Manipulator demo: required node '%s' was not found\n", name);
-        return false;
-    }
-
-    return true;
-}
-
-void window_manipulator_demo()
-{
-    const float epsilon = 0.0001f;
-    const float dt = device_dt_get();
-    frame_dt = dt;
-    window_update_autoplay(dt);
-
-    /*
-     * Translate carriage on X.
-     */
-    scene_node nauo2;
-    if (!window_get_required_node("NAUO2", &nauo2)) {
-        return;
-    }
-
-    gl_mat tr;
-    scene_node_get_world_tr(active_scene, &nauo2, tr.data);
-
-    gl_vec3 cur_tr = gl_mat_get_translation(tr);
-    gl_t delta = -cur_tr.x + nauo2_side * nau02_loc;
-
-    if (gl_abs(delta) > epsilon) {
-        gl_t direction = delta / gl_abs(delta);
-        float new_pos = cur_tr.x + nauo2_speed * dt * direction;
-        new_pos = gl_clamp(new_pos, -nau02_loc, nau02_loc);
-
-        if (gl_abs(new_pos - cur_tr.x) > epsilon) {
-            tr = gl_mat_set_translation(tr, gl_vec3_new(new_pos, cur_tr.y, cur_tr.z));
-            scene_node_set_world_tr(active_scene, &nauo2, tr.data);
-            window_scene_views_mark_as_dirty();
-        }
-    }
-
-    /*
-     * Translate vertical/lift node on Y.
-     */
-    scene_node nauo;
-    if (!window_get_required_node("NAUO2.001", &nauo)) {
-        return;
-    }
-
-    scene_node_get_world_tr(active_scene, &nauo, tr.data);
-    cur_tr = gl_mat_get_translation(tr);
-    delta = -cur_tr.y + target_height;
-
-    if (gl_abs(delta) > epsilon) {
-        gl_t direction = delta / gl_abs(delta);
-        gl_t new_height = cur_tr.y + direction * nauo_speed * dt;
-        new_height = gl_clamp(new_height, end_height, start_height);
-
-        if (gl_abs(cur_tr.y - new_height) > epsilon) {
-            tr = gl_mat_set_translation(tr, gl_vec3_new(cur_tr.x, new_height, cur_tr.z));
-            scene_node_set_world_tr(active_scene, &nauo, tr.data);
-            window_scene_views_mark_as_dirty();
-        }
-    }
-
-    /*
-     * Rotate wrist/gripper.
-     * Important fix: clamp rotation before building the matrix.
-     */
-    scene_node nauo1;
-    if (!window_get_required_node("NAUO1.003", &nauo1)) {
-        return;
-    }
-
-    scene_node_get_world_tr(active_scene, &nauo1, tr.data);
-
-    if (demo_has_rotation_target) {
-        gl_t delta_rot = demo_rotation_target - nau01_rot;
-        if (gl_abs(delta_rot) > epsilon) {
-            gl_t max_step = dt * nau01_rot_speed;
-            nau01_rot += gl_clamp(delta_rot, -max_step, max_step);
-            nau01_rot = gl_clamp(nau01_rot, -rot_limit, rot_limit);
-
-            gl_vec3 current_position = gl_mat_get_translation(tr);
-            gl_mat new_tr = gl_mat_rotate_y(nau01_rot);
-            new_tr = gl_mat_set_translation(new_tr, current_position);
-
-            scene_node_set_world_tr(active_scene, &nauo1, new_tr.data);
-            window_scene_views_mark_as_dirty();
-        }
-    }
-    else if (gl_abs(nau01_rot_dir) > epsilon) {
-        nau01_rot += dt * nau01_rot_speed * nau01_rot_dir;
-        nau01_rot = gl_clamp(nau01_rot, -rot_limit, rot_limit);
-
-        gl_vec3 current_position = gl_mat_get_translation(tr);
-        gl_mat new_tr = gl_mat_rotate_y(nau01_rot);
-        new_tr = gl_mat_set_translation(new_tr, current_position);
-
-        scene_node_set_world_tr(active_scene, &nauo1, new_tr.data);
-        window_scene_views_mark_as_dirty();
-    }
-
-    /*
-     * Move gripper fingers.
-     */
-    scene_node n1, n2;
-    if (!window_get_required_node("NAUO3", &n1)) {
-        return;
-    }
-
-    if (!window_get_required_node("NAUO2.002", &n2)) {
-        return;
-    }
-
-    gl_mat tr1, tr2;
-    scene_node_get_local_tr(active_scene, &n1, tr1.data);
-    scene_node_get_local_tr(active_scene, &n2, tr2.data);
-
-    gl_vec3 cur_tr1 = gl_mat_get_translation(tr1);
-    gl_vec3 cur_tr2 = gl_mat_get_translation(tr2);
-
-    if (hold) {
-        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0, 0, speed * dt));
-        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0, 0, -speed * dt));
-    }
-
-    if (release) {
-        cur_tr1 = gl_vec3_add(cur_tr1, gl_vec3_new(0, 0, -speed * dt));
-        cur_tr2 = gl_vec3_add(cur_tr2, gl_vec3_new(0, 0, speed * dt));
-    }
-
-    if (hold || release) {
-        cur_tr1.z = gl_clamp(cur_tr1.z, tight - relax_delta, tight);
-        cur_tr2.z = gl_clamp(cur_tr2.z, tight, tight + relax_delta);
-
-        tr1 = gl_mat_set_translation(tr1, cur_tr1);
-        tr2 = gl_mat_set_translation(tr2, cur_tr2);
-
-        scene_node_set_local_tr(active_scene, &n1, tr1.data);
-        scene_node_set_local_tr(active_scene, &n2, tr2.data);
-
-        window_scene_views_mark_as_dirty();
-    }
-}
 
 void window_init(struct window_config const* config) {
     device_init(3, 3);
@@ -773,14 +432,16 @@ void window_init(struct window_config const* config) {
     active_scene = scene_new(&desc);
     mdl_unload(model);
 
-    window_capture_manipulator_initial_transforms();
+    manipulator_demo_init(&demo, active_scene);
+    scene_shadow_pass(active_scene);
+
     window_scene_view_create();
     os_memset(logs, 0, sizeof(logs));
-    logs_count=0;
+    logs_count = 0;
 }
 
 void window_run() {
-    while(device_window_valid()) {
+    while (device_window_valid()) {
 
         device_update_events();
 
@@ -791,8 +452,14 @@ void window_run() {
 
         gui_begin_frame();
 
+        frame_dt = (float)device_dt_get();
+        bool scene_changed = manipulator_demo_update(&demo, frame_dt);
+        if (scene_changed) {
+            scene_shadow_pass(active_scene);
+            window_scene_views_mark_as_dirty();
+        }
+
         window_scene_view_draw();
-        window_manipulator_demo();
 
 #ifndef NDEBUG
         //window_log();
