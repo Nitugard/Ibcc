@@ -193,6 +193,7 @@ IBC_API void gfx_draw_id(enum gfx_draw_type type, int32_t length);
 IBC_API void gfx_blend(enum gfx_blend_type src, enum gfx_blend_type dest);
 IBC_API void gfx_blend_enable(bool state);
 IBC_API void gfx_cull_enable(bool state);
+IBC_API void gfx_depth_test_enable(bool state);
 IBC_API void gfx_wireframe_enable(bool state);
 
 IBC_API gfx_pipeline_handle gfx_pipeline_create(gfx_shader_handle handle);

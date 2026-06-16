@@ -863,6 +863,11 @@ void gfx_cull_enable(bool state) {
     else glDisable(GL_CULL_FACE);
 }
 
+void gfx_depth_test_enable(bool state) {
+    if(state) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
+}
+
 void gfx_wireframe_enable(bool state) {
     glPolygonMode(GL_FRONT_AND_BACK, state ? GL_LINE : GL_FILL);
 }

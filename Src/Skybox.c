@@ -79,6 +79,7 @@ void skybox_bind(skybox_handle handle) {
 
 void skybox_render(skybox_handle handle, float projection[16], float view[16]) {
     CORE_ASSERT(handle != 0 && "Invalid skybox pointer");
+    gfx_depth_test_enable(false);
     gfx_cull_enable(false);
     gfx_pipeline_bind(handle->pip);
     gfx_texture_cubemap_bind(handle->cubemap_texture);
@@ -88,6 +89,7 @@ void skybox_render(skybox_handle handle, float projection[16], float view[16]) {
     gfx_shader_uniform_set(handle->shader, handle->skybox_uniform, &texture_unit);
     gfx_draw(GFX_TRIANGLES, 0, 36);
     gfx_cull_enable(true);
+    gfx_depth_test_enable(true);
 }
 
 void skybox_destroy(skybox_handle handle) {
