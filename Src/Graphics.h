@@ -50,6 +50,7 @@ typedef enum gfx_type{
     GFX_TYPE_FLOAT_MAT_3,
     GFX_TYPE_FLOAT_MAT_4,
     GFX_TYPE_SAMPLER_CUBE,
+    GFX_TYPE_SAMPLER_2D,
     GFX_TYPE_TEXTURE,
     GFX_TYPE_INVALID,
 } gfx_type;
@@ -192,6 +193,7 @@ IBC_API void gfx_draw_id(enum gfx_draw_type type, int32_t length);
 IBC_API void gfx_blend(enum gfx_blend_type src, enum gfx_blend_type dest);
 IBC_API void gfx_blend_enable(bool state);
 IBC_API void gfx_cull_enable(bool state);
+IBC_API void gfx_wireframe_enable(bool state);
 
 IBC_API gfx_pipeline_handle gfx_pipeline_create(gfx_shader_handle handle);
 IBC_API void gfx_pipeline_index_enable(gfx_pipeline_handle handle, gfx_buffer_handle buffer);

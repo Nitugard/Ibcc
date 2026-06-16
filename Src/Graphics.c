@@ -207,7 +207,7 @@ gfx_type gfx_get_type(GLenum type) {
         case GL_FLOAT_MAT3: return GFX_TYPE_FLOAT_MAT_3;
         case GL_FLOAT_MAT4: return GFX_TYPE_FLOAT_MAT_4;
         case GL_SAMPLER_CUBE: return GFX_TYPE_SAMPLER_CUBE;
-        case GL_SAMPLER_2D: return GFX_TYPE_SAMPLER_CUBE;  /* treat same — both need glUniform1i */
+        case GL_SAMPLER_2D: return GFX_TYPE_SAMPLER_2D;
         case GL_TEXTURE: return GFX_TYPE_TEXTURE;
     }
 
@@ -229,6 +229,7 @@ char* gfx_get_type_char(GLenum type) {
         case GFX_TYPE_FLOAT_MAT_3: return "gfx_type_float_mat_3";
         case GFX_TYPE_FLOAT_MAT_4: return "gfx_type_float_mat_4";
         case GFX_TYPE_SAMPLER_CUBE: return "gfx_type_sampler_cube";
+        case GFX_TYPE_SAMPLER_2D: return "gfx_type_sampler_2d";
         case GFX_TYPE_TEXTURE: return "gfx_type_texture";
     }
 
@@ -249,6 +250,7 @@ GLenum gl_get_type(gfx_type type){
         case GFX_TYPE_FLOAT_MAT_3: return GL_FLOAT_MAT3;
         case GFX_TYPE_FLOAT_MAT_4: return GL_FLOAT_MAT4;
         case GFX_TYPE_SAMPLER_CUBE: return GL_SAMPLER_CUBE;
+        case GFX_TYPE_SAMPLER_2D: return GL_SAMPLER_2D;
         case GFX_TYPE_TEXTURE: return GL_TEXTURE;
         case GFX_TYPE_INVALID: return 0;
     }
@@ -322,6 +324,7 @@ void gfx_get_uniform_setter(void(**uniform_setter)(uint32_t index, void* data), 
         case GFX_TYPE_FLOAT_MAT_3: *uniform_setter = uniform_set_m3; break;
         case GFX_TYPE_FLOAT_MAT_4: *uniform_setter = uniform_set_m4; break;
         case GFX_TYPE_SAMPLER_CUBE: *uniform_setter = uniform_set_sampler; break;
+        case GFX_TYPE_SAMPLER_2D: *uniform_setter = uniform_set_sampler; break;
         case GFX_TYPE_TEXTURE: *uniform_setter = uniform_set_texture; break;
         default: *uniform_setter = 0;
     }
@@ -858,6 +861,10 @@ void gfx_blend_enable(bool state) {
 void gfx_cull_enable(bool state) {
     if(state) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
+}
+
+void gfx_wireframe_enable(bool state) {
+    glPolygonMode(GL_FRONT_AND_BACK, state ? GL_LINE : GL_FILL);
 }
 
 /*

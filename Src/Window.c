@@ -98,6 +98,14 @@ static void window_view_options(void)
     igSameLine(0.0f, -1.0f);
     if (igRadioButton_Bool("Perspective", view_type == SCENE_VIEW_PERSPECTIVE))
         scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
+
+    bool show_gizmos = scene_view_get_gizmos_visible(views[0]);
+    if (igCheckbox("Show gizmos", &show_gizmos))
+        scene_view_set_gizmos_visible(views[0], show_gizmos);
+
+    bool wireframe = scene_view_get_wireframe(views[0]);
+    if (igCheckbox("Wireframe shading", &wireframe))
+        scene_view_set_wireframe(views[0], wireframe);
 }
 
 static void window_manipulator_controls(void);   /* defined after motion vars */
@@ -647,7 +655,7 @@ void window_run() {
         window_manipulator_demo();
 
 #ifndef NDEBUG
-        //window_log();
+        window_log();
 #endif
 
         int32_t width, height;

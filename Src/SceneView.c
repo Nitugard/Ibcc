@@ -49,6 +49,8 @@ typedef struct scene_view{
     scene_view_controller controller;
     char const* name;
     bool dirty;
+    bool gizmos_visible;
+    bool wireframe;
     enum scene_view_type view_type;
 } scene_view;
 
@@ -131,6 +133,8 @@ scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_ty
     handle->width = width;
     handle->height = height;
     handle->dirty = true;
+    handle->gizmos_visible = true;
+    handle->wireframe = false;
     handle->wire = wire_new(512);
 
     create_fbo(handle, width, height);
@@ -224,15 +228,22 @@ void scene_view_render(scene_view_handle handle,void* scene) {
                        GFX_PASS_ACTION_CLEAR_DEPTH | GFX_PASS_ACTION_CLEAR_COLOR,
                         color);
 
-        wire_clear_all(handle->wire);
         gfx_viewport_set(handle->width, handle->height);
-        wire_axis(handle->wire, handle->controller.offset.data);
 
         gl_mat tr = handle->controller.rotation;
         tr = gl_mat_set_translation(tr, handle->controller.position);
 
-        wire_draw(handle->wire, handle->controller.projection.data, gl_mat_inverse(tr).data);
-        scene_draw_with_camera(scene, handle->controller.projection.data, tr.data, handle->view_type == SCENE_VIEW_PERSPECTIVE);
+        if (handle->gizmos_visible) {
+            wire_clear_all(handle->wire);
+            wire_axis(handle->wire, handle->controller.offset.data);
+            wire_draw(handle->wire, handle->controller.projection.data, gl_mat_inverse(tr).data);
+        }
+
+        scene_draw_with_camera(scene,
+                               handle->controller.projection.data,
+                               tr.data,
+                               handle->view_type == SCENE_VIEW_PERSPECTIVE,
+                               handle->wireframe);
         gfx_end_pass();
 
         handle->dirty = false;
@@ -313,6 +324,32 @@ void scene_view_set_fov(scene_view_handle handle, float fov) {
 
     handle->controller.fov = fov;
     scene_view_controller_update_projection(handle);
+    handle->dirty = true;
+}
+
+bool scene_view_get_gizmos_visible(scene_view_handle handle) {
+    return handle->gizmos_visible;
+}
+
+void scene_view_set_gizmos_visible(scene_view_handle handle, bool visible) {
+    if (handle->gizmos_visible == visible) {
+        return;
+    }
+
+    handle->gizmos_visible = visible;
+    handle->dirty = true;
+}
+
+bool scene_view_get_wireframe(scene_view_handle handle) {
+    return handle->wireframe;
+}
+
+void scene_view_set_wireframe(scene_view_handle handle, bool enabled) {
+    if (handle->wireframe == enabled) {
+        return;
+    }
+
+    handle->wireframe = enabled;
     handle->dirty = true;
 }
 

@@ -360,7 +360,7 @@ scene_handle scene_new(scene_desc const* desc) {
         /* Register shadow uniforms in every Lit material */
         for (uint32_t i = 0; i < handle->materials_count; ++i) {
             scene_internal_pbr_material *mat = handle->materials + i;
-            gfx_shader_uniform_enable(mat->shader, "shadow_map", GFX_TYPE_SAMPLER_CUBE, &mat->shadow_map_uniform);
+            gfx_shader_uniform_enable(mat->shader, "shadow_map", GFX_TYPE_SAMPLER_2D, &mat->shadow_map_uniform);
             gfx_shader_uniform_enable(mat->shader, "light_space", GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
         }
     }
@@ -407,7 +407,7 @@ scene_handle scene_new(scene_desc const* desc) {
         gfx_shader_uniform_enable(handle->ground_shader, "metallic",                GFX_TYPE_FLOAT_VEC_1, &handle->gnd_metallic_u);
         gfx_shader_uniform_enable(handle->ground_shader, "base_color",              GFX_TYPE_FLOAT_VEC_3, &handle->gnd_color_u);
         gfx_shader_uniform_enable(handle->ground_shader, "skybox",                  GFX_TYPE_SAMPLER_CUBE, &handle->gnd_skybox_u);
-        gfx_shader_uniform_enable(handle->ground_shader, "shadow_map",              GFX_TYPE_SAMPLER_CUBE, &handle->gnd_shadowmap_u);
+        gfx_shader_uniform_enable(handle->ground_shader, "shadow_map",              GFX_TYPE_SAMPLER_2D, &handle->gnd_shadowmap_u);
         gfx_shader_uniform_enable(handle->ground_shader, "light_space",             GFX_TYPE_FLOAT_MAT_4, &handle->gnd_lightspace_u);
     }
 
@@ -553,10 +553,10 @@ void scene_draw(scene_handle handle) {
     scene_camera camera;
     scene_node node;
     scene_camera_get_at(handle, camera_node->camera_index, &node, &camera);
-    scene_draw_with_camera(handle, camera.projection, camera_node->world_tr.data, true);
+    scene_draw_with_camera(handle, camera.projection, camera_node->world_tr.data, true, false);
 }
 
-void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[16], bool draw_skybox){
+void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[16], bool draw_skybox, bool wireframe){
 
     gl_mat world_tr = gl_mat_new_array(tr);
     gl_mat view = gl_mat_inverse(world_tr);
@@ -568,6 +568,12 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
         skybox_bind(handle->skybox);  /* binds cubemap to unit 0 */
     }
     gfx_texture_bind(handle->shadow_depth_tex, shadow_unit);  /* shadow map on unit 1 */
+
+    if(handle->skybox_enabled && handle->skybox_render && draw_skybox){
+        skybox_render(handle->skybox, projection, view_no_tr.data);
+    }
+
+    gfx_wireframe_enable(wireframe);
 
     for (int32_t i = 0; i < handle->meshes_count; ++i) {
         scene_internal_mesh *mesh = handle->meshes + i;
@@ -619,9 +625,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
         gfx_draw_id(GFX_TRIANGLES, 6);
     }
 
-    if(handle->skybox_render && draw_skybox){
-        skybox_render(handle->skybox, projection, view_no_tr.data);
-    }
+    gfx_wireframe_enable(false);
 }
 
 

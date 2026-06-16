@@ -10,6 +10,12 @@ Build/Bin/**/*
 !Build/Bin/**/*.vert
 !Build/Bin/**/*.glsl
 !Build/Bin/**/*.hlsl
+!Build/Bin/Data/
+Build/Bin/Data/*
+!Build/Bin/Data/skybox/
+Build/Bin/Data/skybox/*
+!Build/Bin/Data/skybox/*.jpg
+!Build/Bin/Data/skybox/*.png
 .idea/*
 /cmake-build-codex
 .aicodeprep-gui

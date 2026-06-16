@@ -67,6 +67,7 @@ skybox_handle skybox_load(const char* path) {
     handle->pip = gfx_pipeline_create(handle->shader);
     gfx_pipeline_attr_enable(handle->pip, ATTR_POSITION_NAME, handle->buffer, 3, 0,
                              sizeof(float) * 3);
+    gfx_pipeline_use_depth_buffer(handle->pip, false);
     gfx_pipeline_submit(handle->pip);
     return handle;
 }
