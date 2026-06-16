@@ -88,9 +88,21 @@ static void window_view_options(void)
     float fov = scene_view_get_fov(views[0]);
     if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0))
         scene_view_set_fov(views[0], fov);
+
+    scene_view_type view_type = scene_view_get_type(views[0]);
+    if (igRadioButton_Bool("Front", view_type == SCENE_VIEW_ORTOGRAPHIC_FRONT))
+        scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_FRONT);
+    igSameLine(0.0f, -1.0f);
+    if (igRadioButton_Bool("Side", view_type == SCENE_VIEW_ORTOGRAPHIC_SIDE))
+        scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_SIDE);
+    igSameLine(0.0f, -1.0f);
+    if (igRadioButton_Bool("Perspective", view_type == SCENE_VIEW_PERSPECTIVE))
+        scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
 }
 
 static void window_manipulator_controls(void);   /* defined after motion vars */
+static void window_scene_view_overlay(void);
+static bool window_get_required_node(const char* name, scene_node* out_node);
 
 void window_scene_view_draw(){
     int32_t ww, wh;
@@ -137,6 +149,8 @@ void window_scene_view_draw(){
                 (ImVec2){0, 1}, (ImVec2){1, 0},
                 (ImVec4){1, 1, 1, 1}, (ImVec4){0, 0, 0, 0}
             );
+
+            window_scene_view_overlay();
         }
         igEnd();
     }
@@ -206,6 +220,29 @@ void window_scene_view_draw(){
     }
 }
 
+static void window_scene_view_overlay(void)
+{
+    ImVec2 window_pos;
+    igGetWindowPos(&window_pos);
+    igSetCursorScreenPos((ImVec2){window_pos.x + 14.0f, window_pos.y + 14.0f});
+
+    igPushStyleColor_Vec4(ImGuiCol_ChildBg, (ImVec4){0.02f, 0.02f, 0.03f, 0.42f});
+    igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){0.96f, 0.96f, 0.98f, 1.00f});
+    igBeginChild_Str("ViewportOverlay",
+                     (ImVec2){270.0f, 58.0f},
+                     false,
+                     ImGuiWindowFlags_NoScrollbar |
+                     ImGuiWindowFlags_NoScrollWithMouse |
+                     ImGuiWindowFlags_NoInputs);
+    {
+        igSpacing();
+        igText("Manipulator Demo");
+        igTextDisabled("RMB rotate | MMB pan | Wheel zoom");
+    }
+    igEndChild();
+    igPopStyleColor(2);
+}
+
 void window_log(){
     int32_t width, height;
     device_window_dimensions_get(&width, &height);
@@ -245,10 +282,150 @@ const float tight = -0.031;
 const float relax_delta = 0.055;
 const float speed = 0.05f;
 
+typedef struct manipulator_initial_transform {
+    const char* name;
+    gl_mat local_tr;
+} manipulator_initial_transform;
+
+static manipulator_initial_transform manipulator_initial_transforms[] = {
+    {.name = "NAUO2"},
+    {.name = "NAUO2.001"},
+    {.name = "NAUO1.003"},
+    {.name = "NAUO3"},
+    {.name = "NAUO2.002"},
+};
+
+static bool manipulator_transforms_captured = false;
+static bool demo_autoplay = false;
+static int32_t demo_phase = 0;
+static float demo_phase_time = 0.0f;
+static bool demo_has_rotation_target = false;
+static float demo_rotation_target = 0.0f;
+
+static void window_capture_manipulator_initial_transforms(void)
+{
+    int32_t count = (int32_t)(sizeof(manipulator_initial_transforms) / sizeof(manipulator_initial_transforms[0]));
+    for (int32_t i = 0; i < count; ++i) {
+        scene_node node;
+        if (!window_get_required_node(manipulator_initial_transforms[i].name, &node)) {
+            return;
+        }
+
+        scene_node_get_local_tr(active_scene, &node, manipulator_initial_transforms[i].local_tr.data);
+    }
+
+    manipulator_transforms_captured = true;
+}
+
+static void window_reset_manipulator(void)
+{
+    if (!manipulator_transforms_captured) {
+        window_capture_manipulator_initial_transforms();
+    }
+
+    if (manipulator_transforms_captured) {
+        int32_t count = (int32_t)(sizeof(manipulator_initial_transforms) / sizeof(manipulator_initial_transforms[0]));
+        for (int32_t i = 0; i < count; ++i) {
+            scene_node node;
+            if (!window_get_required_node(manipulator_initial_transforms[i].name, &node)) {
+                return;
+            }
+
+            scene_node_set_local_tr(active_scene, &node, manipulator_initial_transforms[i].local_tr.data);
+        }
+    }
+
+    nauo2_side = 1;
+    nauo_side = 1;
+    target_height = start_height;
+    nau01_rot = 0.0f;
+    nau01_rot_dir = 0.0f;
+    hold = false;
+    release = false;
+    demo_autoplay = false;
+    demo_phase = 0;
+    demo_phase_time = 0.0f;
+    demo_has_rotation_target = false;
+    demo_rotation_target = 0.0f;
+    window_scene_views_mark_as_dirty();
+}
+
+static void window_autoplay_advance(void)
+{
+    demo_phase = (demo_phase + 1) % 6;
+    demo_phase_time = 0.0f;
+}
+
+static void window_update_autoplay(float dt)
+{
+    if (!demo_autoplay) {
+        demo_has_rotation_target = false;
+        return;
+    }
+
+    demo_phase_time += dt;
+    hold = false;
+    release = false;
+    demo_has_rotation_target = false;
+
+    switch (demo_phase) {
+        case 0:
+            nauo2_side = -1;
+            if (demo_phase_time >= 2.0f) window_autoplay_advance();
+            break;
+        case 1:
+            nauo_side = -1;
+            target_height = end_height;
+            if (demo_phase_time >= 1.8f) window_autoplay_advance();
+            break;
+        case 2:
+            demo_has_rotation_target = true;
+            demo_rotation_target = rot_limit;
+            if (gl_abs(nau01_rot - demo_rotation_target) <= 0.5f) window_autoplay_advance();
+            break;
+        case 3:
+            hold = true;
+            if (demo_phase_time >= 1.2f) window_autoplay_advance();
+            break;
+        case 4:
+            release = true;
+            if (demo_phase_time >= 1.2f) window_autoplay_advance();
+            break;
+        case 5:
+            nauo2_side = 1;
+            nauo_side = 1;
+            target_height = start_height;
+            demo_has_rotation_target = true;
+            demo_rotation_target = 0.0f;
+            if (demo_phase_time >= 2.2f && gl_abs(nau01_rot - demo_rotation_target) <= 0.5f) {
+                window_autoplay_advance();
+            }
+            break;
+    }
+}
+
 static void window_manipulator_controls(void)
 {
     ImVec2 avail; igGetContentRegionAvail(&avail);
     float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
+
+    if (igButton("Reset manipulator", (ImVec2){-1.0f, 0.0f}))
+        window_reset_manipulator();
+
+    if (igButton("Play demo animation", (ImVec2){-1.0f, 0.0f})) {
+        demo_autoplay = true;
+        demo_phase = 0;
+        demo_phase_time = 0.0f;
+    }
+
+    if (igButton("Pause", (ImVec2){-1.0f, 0.0f})) {
+        demo_autoplay = false;
+        hold = false;
+        release = false;
+        nau01_rot_dir = 0.0f;
+    }
+
+    igSeparator();
 
     if (igButton("Pomak X", (ImVec2){-1.0f, 0.0f}))
         nauo2_side *= -1;
@@ -293,6 +470,7 @@ void window_manipulator_demo()
     const float epsilon = 0.0001f;
     const float dt = device_dt_get();
     frame_dt = dt;
+    window_update_autoplay(dt);
 
     /*
      * Translate carriage on X.
@@ -355,7 +533,22 @@ void window_manipulator_demo()
 
     scene_node_get_world_tr(active_scene, &nauo1, tr.data);
 
-    if (gl_abs(nau01_rot_dir) > epsilon) {
+    if (demo_has_rotation_target) {
+        gl_t delta_rot = demo_rotation_target - nau01_rot;
+        if (gl_abs(delta_rot) > epsilon) {
+            gl_t max_step = dt * nau01_rot_speed;
+            nau01_rot += gl_clamp(delta_rot, -max_step, max_step);
+            nau01_rot = gl_clamp(nau01_rot, -rot_limit, rot_limit);
+
+            gl_vec3 current_position = gl_mat_get_translation(tr);
+            gl_mat new_tr = gl_mat_rotate_y(nau01_rot);
+            new_tr = gl_mat_set_translation(new_tr, current_position);
+
+            scene_node_set_world_tr(active_scene, &nauo1, new_tr.data);
+            window_scene_views_mark_as_dirty();
+        }
+    }
+    else if (gl_abs(nau01_rot_dir) > epsilon) {
         nau01_rot += dt * nau01_rot_speed * nau01_rot_dir;
         nau01_rot = gl_clamp(nau01_rot, -rot_limit, rot_limit);
 
@@ -432,6 +625,7 @@ void window_init(struct window_config const* config) {
     active_scene = scene_new(&desc);
     mdl_unload(model);
 
+    window_capture_manipulator_initial_transforms();
     window_scene_view_create();
     os_memset(logs, 0, sizeof(logs));
     logs_count=0;

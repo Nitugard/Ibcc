@@ -96,8 +96,26 @@ const char* view_type_to_string(scene_view_type view_type) {
             return "SCENE_VIEW_PERSPECTIVE";
         case SCENE_VIEW_ORTOGRAPHIC_FRONT:
             return "SCENE_VIEW_ORTOGRAPHIC_FRONT";
+        case SCENE_VIEW_ORTOGRAPHIC_SIDE:
+            return "SCENE_VIEW_ORTOGRAPHIC_SIDE";
     }
     return "DEFAULT";
+}
+
+static void scene_view_controller_apply_view_type(scene_view_handle handle) {
+    switch (handle->view_type) {
+        case SCENE_VIEW_PERSPECTIVE:
+        case SCENE_VIEW_ORTOGRAPHIC_FRONT:
+            handle->controller.yaw = 0.0f;
+            handle->controller.pitch = 0.0f;
+            break;
+        case SCENE_VIEW_ORTOGRAPHIC_SIDE:
+            handle->controller.yaw = -90.0f;
+            handle->controller.pitch = 0.0f;
+            break;
+    }
+
+    scene_view_controller_update_internal(handle);
 }
 
 scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_type view_type)
@@ -127,6 +145,10 @@ scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_ty
             wire_grid(handle->wire, 32, 2);
         }
             break;
+        case SCENE_VIEW_ORTOGRAPHIC_SIDE: {
+            wire_grid(handle->wire, 32, 2);
+        }
+            break;
     }
 
     wire_apply(handle->wire);
@@ -136,7 +158,7 @@ scene_view_handle scene_view_create(int32_t width, int32_t height, scene_view_ty
     handle->controller.move_speed = DEFAULT_MOVE_SPEED;
     handle->controller.rot_speed = DEFAULT_ROTATE_SPEED;
 
-    scene_view_controller_update_internal(handle);
+    scene_view_controller_apply_view_type(handle);
     scene_view_controller_update_projection(handle);
     return handle;
 }
@@ -270,11 +292,7 @@ void scene_view_set_type(scene_view_handle handle, scene_view_type view_type) {
     handle->view_type = view_type;
     handle->name = view_type_to_string(view_type);
 
-    if (view_type != SCENE_VIEW_PERSPECTIVE) {
-        handle->controller.yaw = 0.0f;
-        handle->controller.pitch = 0.0f;
-        scene_view_controller_update_internal(handle);
-    }
+    scene_view_controller_apply_view_type(handle);
 
     scene_view_controller_update_projection(handle);
     handle->dirty = true;

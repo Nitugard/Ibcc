@@ -20,6 +20,7 @@ typedef struct scene_view* scene_view_handle;
 typedef enum scene_view_type{
     SCENE_VIEW_PERSPECTIVE,
     SCENE_VIEW_ORTOGRAPHIC_FRONT,
+    SCENE_VIEW_ORTOGRAPHIC_SIDE,
 } scene_view_type;
 
 typedef struct scene_view_camera_options{
