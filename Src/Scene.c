@@ -63,6 +63,9 @@ typedef struct scene_internal_pbr_material{
     int32_t light_space_uniform;
     int32_t brdf_lut_uniform;
     int32_t prefiltered_env_uniform;
+    int32_t base_color_tex_uniform;
+    int32_t has_color_tex_uniform;
+    int32_t has_vertex_color_uniform;
 
     gfx_shader_handle shader;
 } scene_internal_pbr_material;
@@ -77,6 +80,7 @@ typedef struct scene_internal_mesh_primitive{
     gfx_buffer_handle index_handle;
 
     gfx_draw_type draw_type;
+    bool has_vertex_color;
 } scene_internal_mesh_primitive;
 
 typedef struct scene_internal_mesh{
@@ -218,6 +222,7 @@ scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_
     result.indices_count = primitive.indices_count;
     result.index_handle = index_handle;
     result.material_id = primitive.material_id;
+    result.has_vertex_color = (primitive.attributes_flag & MDL_VERTEX_ATTRIBUTE_COLOR) != 0;
     return result;
 }
 
@@ -321,6 +326,33 @@ scene_handle scene_new(scene_desc const* desc) {
     }
     OS_FREE(vs);
     OS_FREE(fs);
+
+    /*
+     * Upload GLTF images to GPU as sRGBA textures.
+     */
+    handle->textures_count = (uint32_t)model->textures_count;
+    if (model->textures_count > 0) {
+        handle->textures = OS_MALLOC(sizeof(scene_internal_texture) * model->textures_count);
+        for (int32_t i = 0; i < model->textures_count; ++i) {
+            mdl_texture *src = model->textures + i;
+            handle->textures[i].texture_handle = 0;
+            if (src->valid) {
+                handle->textures[i].texture_handle = gfx_texture_create(
+                    src->width, src->height, src->buffer,
+                    GFX_TEXTURE_TYPE_SRGBA,
+                    GFX_TEXTURE_FILTER_LINEAR,
+                    GFX_TEXTURE_WRAP_REPEAT);
+            }
+        }
+    }
+
+    /* Register texture + vertex-color uniforms for every Lit material shader */
+    for (uint32_t i = 0; i < handle->materials_count; ++i) {
+        scene_internal_pbr_material *mat = handle->materials + i;
+        gfx_shader_uniform_enable(mat->shader, "base_color_texture", GFX_TYPE_SAMPLER_2D,    &mat->base_color_tex_uniform);
+        gfx_shader_uniform_enable(mat->shader, "has_color_texture",  GFX_TYPE_INTEGER_VEC_1, &mat->has_color_tex_uniform);
+        gfx_shader_uniform_enable(mat->shader, "has_vertex_color",   GFX_TYPE_INTEGER_VEC_1, &mat->has_vertex_color_uniform);
+    }
 
     /*
      * Shadow renderer — owns depth FBO + shader + light-space matrix.
@@ -545,6 +577,21 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->shadow.light_space.data);
                 gfx_shader_uniform_set(mat->shader, mat->brdf_lut_uniform,           &brdf_unit);
                 gfx_shader_uniform_set(mat->shader, mat->prefiltered_env_uniform, &prefilter_unit);
+
+                /* Base color texture (unit 4) */
+                int32_t base_color_unit = 4;
+                int32_t has_color_tex   = 0;
+                if (mat->color_texture_id >= 0 &&
+                    mat->color_texture_id < (int32_t)handle->textures_count &&
+                    handle->textures[mat->color_texture_id].texture_handle != 0) {
+                    gfx_texture_bind(handle->textures[mat->color_texture_id].texture_handle,
+                                     base_color_unit);
+                    has_color_tex = 1;
+                }
+                int32_t has_vtx_col = primitive->has_vertex_color ? 1 : 0;
+                gfx_shader_uniform_set(mat->shader, mat->base_color_tex_uniform,    &base_color_unit);
+                gfx_shader_uniform_set(mat->shader, mat->has_color_tex_uniform,     &has_color_tex);
+                gfx_shader_uniform_set(mat->shader, mat->has_vertex_color_uniform,  &has_vtx_col);
 
             }
 

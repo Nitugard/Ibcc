@@ -4,6 +4,7 @@ varying vec3 position;
 varying vec3 normal;
 varying vec4 tangent;
 varying vec4 color;
+varying vec2 uv;
 
 uniform vec3  view_position;
 uniform samplerCube skybox;
@@ -18,7 +19,22 @@ uniform sampler2D shadow_map;
 uniform mat4      light_space;
 uniform sampler2D brdf_lut;
 
+uniform sampler2D base_color_texture;
+uniform int       has_color_texture;
+uniform int       has_vertex_color;
+
 #define PREFILTER_MIPS 5
+
+/* ---- ACES filmic tone mapping (Narkowicz 2015) ---- */
+vec3 aces_filmic(vec3 x)
+{
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
 
 /* ---- Poisson disk 16-sample PCF soft shadows ---- */
 float shadow_calc(float NdotL)
@@ -104,7 +120,14 @@ void main()
     float r = clamp(roughness, 0.05, 1.0);
     float m = clamp(metallic,  0.0,  1.0);
 
-    vec3 F0 = mix(vec3(0.04), base_color, m);
+    /* Resolve albedo: base_color_factor × texture × vertex_color (GLTF spec) */
+    vec3 albedo = base_color;
+    if (has_color_texture != 0)
+        albedo *= texture(base_color_texture, uv).rgb;
+    if (has_vertex_color != 0)
+        albedo *= color.rgb;
+
+    vec3 F0 = mix(vec3(0.04), albedo, m);
 
     vec3 F_ibl    = fresnel_schlick(NdotV, F0);
     vec3 F_direct = fresnel_schlick(NdotH, F0);
@@ -122,20 +145,20 @@ void main()
     vec2 brdf     = texture(brdf_lut, vec2(NdotV, r)).rg;
     vec3 spec_ibl = env_spec * (F0 * brdf.x + brdf.y);
 
-    vec3 ambient = kD * base_color * irradiance + spec_ibl;
+    vec3 ambient = kD * albedo * irradiance + spec_ibl;
 
     /* Direct lighting */
     vec3 sun = vec3(1.1, 1.05, 1.0);
 
     float shininess = mix(256.0, 4.0, r * r);
-    vec3  diffuse   = kD * base_color * NdotL * sun;
+    vec3  diffuse   = kD * albedo * NdotL * sun;
     vec3  specular  = F_direct * pow(NdotH, shininess) * NdotL * sun;
 
     float shadow = shadow_calc(NdotL);
     vec3  result = ambient + (1.0 - shadow) * (diffuse + specular);
 
-    /* HDR tonemap + gamma */
-    result = vec3(1.0) - exp(-max(result, 0.0) * exposure);
+    /* Exposure → ACES filmic tonemap → gamma */
+    result = aces_filmic(result * exposure);
     result = pow(result, vec3(1.0 / 2.2));
     gl_FragColor = vec4(result, 1.0);
 }

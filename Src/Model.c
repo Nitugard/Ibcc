@@ -17,6 +17,8 @@
 #define CGLTF_IMPLEMENTATION
 #include "cgltf.h"
 
+#include "stb_image.h"
+
 #ifndef CORE_ASSERT
 #include "assert.h"
 #define CORE_ASSERT(e) assert(e)
@@ -491,6 +493,8 @@ mdl_handle mdl_load(const char* path) {
                         break;
 
                 }
+                /* Track which attribute types are present on this primitive */
+                primitive->attributes_flag |= (int32_t)attribute->type;
                 //Todo: user defined attributes(they start with underscore in gltf specification) but clgtf seems to generate invalid attribute for them??
                 if (cattribute->type == cgltf_attribute_type_invalid) continue;
 
@@ -604,7 +608,19 @@ mdl_handle mdl_load(const char* path) {
 
         if (cmat->has_pbr_metallic_roughness) {
             mat->valid = true;
+            /* Resolve base color texture index */
             mat->color_texture_id = -1;
+            if (cmat->pbr_metallic_roughness.base_color_texture.texture != NULL) {
+                cgltf_image *cimg = cmat->pbr_metallic_roughness.base_color_texture.texture->image;
+                if (cimg != NULL) {
+                    for (int32_t k = 0; k < (int32_t)data->images_count; ++k) {
+                        if (data->images + k == cimg) {
+                            mat->color_texture_id = k;
+                            break;
+                        }
+                    }
+                }
+            }
             mat->metallic_factor = cmat->pbr_metallic_roughness.metallic_factor;
             mat->roughness_factor = cmat->pbr_metallic_roughness.roughness_factor;
             os_memcpy(mat->color_factor, cmat->pbr_metallic_roughness.base_color_factor, sizeof(gl_vec4));
@@ -619,6 +635,66 @@ mdl_handle mdl_load(const char* path) {
             if (verbose) printf("- - - Unsupported material\n");
         };
 
+    }
+
+    /*
+     * Loading of the textures (embedded images via buffer_view, or external URIs).
+     * Must happen before cgltf_free() while buffer_view data is still valid.
+     */
+    handle->textures_count = (int32_t)data->images_count;
+    if (data->images_count > 0) {
+        handle->textures = OS_MALLOC(sizeof(mdl_texture) * data->images_count);
+        os_memset(handle->textures, 0, sizeof(mdl_texture) * data->images_count);
+
+        /* Extract base directory from path for external URI resolution */
+        char dir_buf[512];
+        os_memset(dir_buf, 0, sizeof(dir_buf));
+        if (path != NULL) {
+            const char *last_sep  = strrchr(path, '/');
+            const char *last_bsep = strrchr(path, '\\');
+            const char *last = (last_sep > last_bsep) ? last_sep : last_bsep;
+            if (last) {
+                size_t dir_len = (size_t)(last - path + 1);
+                if (dir_len < sizeof(dir_buf))
+                    os_memcpy(dir_buf, path, dir_len);
+            }
+        }
+
+        for (int32_t i = 0; i < (int32_t)data->images_count; ++i) {
+            cgltf_image *cimg = data->images + i;
+            mdl_texture *tex  = handle->textures + i;
+            tex->valid = false;
+
+            int w = 0, h = 0, ch = 0;
+            unsigned char *pixels = NULL;
+
+            if (cimg->buffer_view != NULL) {
+                /* Embedded image (base64-decoded or .glb buffer) */
+                unsigned char *src = (unsigned char *)cimg->buffer_view->buffer->data
+                                     + cimg->buffer_view->offset;
+                pixels = stbi_load_from_memory(src, (int)cimg->buffer_view->size,
+                                               &w, &h, &ch, 4);
+            } else if (cimg->uri != NULL) {
+                /* External file URI — resolve relative to the .gltf directory */
+                char full_path[512];
+                snprintf(full_path, sizeof(full_path), "%s%s", dir_buf, cimg->uri);
+                pixels = stbi_load(full_path, &w, &h, &ch, 4);
+            }
+
+            if (pixels) {
+                tex->width    = w;
+                tex->height   = h;
+                tex->channels = 4;
+                tex->size     = w * h * 4;
+                tex->buffer   = OS_MALLOC(tex->size);
+                os_memcpy(tex->buffer, pixels, tex->size);
+                stbi_image_free(pixels);
+                tex->valid = true;
+                printf("- Loaded image %i: %ix%i\n", i, w, h);
+            } else {
+                fprintf(stderr, "- Failed to load image %i: %s\n", i, stbi_failure_reason());
+            }
+        }
     }
 
     OS_FREE(buffer);
