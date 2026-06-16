@@ -9,6 +9,13 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+
+#ifdef __EMSCRIPTEN__
+#include <GL/gl.h>
+#else
+#include <GL/gl3w.h>
+#endif
+
 #include "SceneView.h"
 #include "Allocator.h"
 #include "Graphics.h"
@@ -41,10 +48,16 @@ typedef struct scene_view_controller{
 } scene_view_controller;
 
 typedef struct scene_view{
-    gfx_framebuffer_handle fbo;
-    gfx_texture_handle color_tex;
-    gfx_texture_handle depth_tex;
+    gfx_framebuffer_handle fbo;        /* resolve FBO (GFX handle, holds color_tex) */
+    gfx_texture_handle color_tex;      /* single-sample resolved color — ImGui reads this */
+    gfx_texture_handle depth_tex;      /* depth texture (owned by gfx fbo) */
     int32_t width, height;
+
+    /* 4× MSAA render surface — scene renders here, blitted to color_tex each frame */
+    uint32_t msaa_fbo;
+    uint32_t msaa_color_rbo;
+    uint32_t msaa_depth_rbo;
+    uint32_t resolve_fbo_id;           /* raw GL FBO that wraps color_tex for blit dst */
     wire_handle wire;
     scene_view_controller controller;
     char const* name;
@@ -97,12 +110,35 @@ void scene_view_controller_update_internal(scene_view_handle handle) {
 
 void create_fbo(scene_view* handle, int32_t width, int32_t height) {
 
+    /* ---- Resolve target: regular single-sample textures ---- */
     handle->color_tex = gfx_texture_create(width, height, 0, GFX_TEXTURE_TYPE_RGB, GFX_TEXTURE_FILTER_LINEAR,
                                            GFX_TEXTURE_WRAP_CLAMP);
     handle->depth_tex = gfx_texture_create(width, height, 0, GFX_TEXTURE_TYPE_DEPTH, GFX_TEXTURE_FILTER_LINEAR,
                                            GFX_TEXTURE_WRAP_CLAMP);
-
     handle->fbo = gfx_framebuffer_create(handle->color_tex, handle->depth_tex);
+
+    /* ---- 4× MSAA render FBO ---- */
+    glGenRenderbuffers(1, &handle->msaa_color_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, handle->msaa_color_rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_RGB8, width, height);
+
+    glGenRenderbuffers(1, &handle->msaa_depth_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, handle->msaa_depth_rbo);
+    glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT24, width, height);
+
+    glGenFramebuffers(1, &handle->msaa_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, handle->msaa_fbo);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, handle->msaa_color_rbo);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,  GL_RENDERBUFFER, handle->msaa_depth_rbo);
+
+    /* ---- Resolve FBO: plain GL FBO that wraps color_tex as blit destination ---- */
+    glGenFramebuffers(1, &handle->resolve_fbo_id);
+    glBindFramebuffer(GL_FRAMEBUFFER, handle->resolve_fbo_id);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           (uint32_t)gfx_texture_get_id(handle->color_tex), 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
 }
 
 const char* view_type_to_string(scene_view_type view_type) {
@@ -242,14 +278,18 @@ void scene_view_update_controller(scene_view_handle handle) {
     }
 }
 
-void scene_view_render(scene_view_handle handle,void* scene) {
+void scene_view_render(scene_view_handle handle, void* scene) {
     if (handle->camera_dirty || handle->viewport_dirty || handle->scene_dirty) {
 
-        gfx_begin_pass(handle->fbo, GFX_PASS_OPTION_DEPTH_TEST | GFX_PASS_OPTION_CULL_BACK,
-                       GFX_PASS_ACTION_CLEAR_DEPTH | GFX_PASS_ACTION_CLEAR_COLOR,
-                        color);
-
-        gfx_viewport_set(handle->width, handle->height);
+        /* ---- 1. Render scene into 4× MSAA FBO ---- */
+        glBindFramebuffer(GL_FRAMEBUFFER, handle->msaa_fbo);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glClearColor(color[0], color[1], color[2], color[3]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glViewport(0, 0, handle->width, handle->height);
 
         gl_mat tr = handle->controller.rotation;
         tr = gl_mat_set_translation(tr, handle->controller.position);
@@ -265,7 +305,16 @@ void scene_view_render(scene_view_handle handle,void* scene) {
             wire_axis(handle->wire, handle->controller.offset.data);
             wire_draw(handle->wire, handle->controller.projection.data, gl_mat_inverse(tr).data);
         }
-        gfx_end_pass();
+
+        /* ---- 2. Resolve MSAA → single-sample color_tex ---- */
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, handle->msaa_fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle->resolve_fbo_id);
+        glBlitFramebuffer(0, 0, handle->width, handle->height,
+                          0, 0, handle->width, handle->height,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+        /* Restore default FBO so subsequent ImGui/GFX calls aren't affected */
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         handle->camera_dirty   = false;
         handle->viewport_dirty = false;
@@ -300,6 +349,12 @@ void scene_view_resize(scene_view_handle handle, int32_t w, int32_t h) {
         handle->camera_dirty   = true;  /* projection aspect ratio changed */
 
         if(w != 0 && h != 0) {
+            /* Destroy MSAA resources before GFX resources */
+            glDeleteFramebuffers(1,  &handle->msaa_fbo);
+            glDeleteFramebuffers(1,  &handle->resolve_fbo_id);
+            glDeleteRenderbuffers(1, &handle->msaa_color_rbo);
+            glDeleteRenderbuffers(1, &handle->msaa_depth_rbo);
+
             gfx_texture_destroy(handle->color_tex);
             gfx_texture_destroy(handle->depth_tex);
             gfx_framebuffer_destroy(handle->fbo);
@@ -379,6 +434,12 @@ void scene_view_set_wireframe(scene_view_handle handle, bool enabled) {
 
 void scene_view_destroy(scene_view_handle handle){
     wire_delete(handle->wire);
+
+    glDeleteFramebuffers(1,  &handle->msaa_fbo);
+    glDeleteFramebuffers(1,  &handle->resolve_fbo_id);
+    glDeleteRenderbuffers(1, &handle->msaa_color_rbo);
+    glDeleteRenderbuffers(1, &handle->msaa_depth_rbo);
+
     gfx_texture_destroy(handle->depth_tex);
     gfx_texture_destroy(handle->color_tex);
     gfx_framebuffer_destroy(handle->fbo);
