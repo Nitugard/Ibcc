@@ -21,6 +21,12 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef __EMSCRIPTEN__
+#include <GL/gl.h>
+#else
+#include <GL/gl3w.h>
+#endif
+
 typedef struct scene_internal_node {
     char* name;
 
@@ -76,6 +82,7 @@ typedef struct scene_internal_mesh_primitive{
 
     gfx_pipeline_handle pipeline_handle;
     gfx_pipeline_handle shadow_pipeline;
+    gfx_pipeline_handle highlight_pipeline;
     gfx_buffer_handle buffer_handle;
     gfx_buffer_handle index_handle;
 
@@ -145,6 +152,11 @@ typedef struct scene_internal_data{
     ground_renderer ground;
     gfx_texture_handle brdf_lut;
     uint32_t prefiltered_env_id;   /* raw GL cubemap — 0 when no skybox */
+
+    /* Selection + highlight */
+    int32_t selected_node_id;
+    gfx_shader_handle highlight_shader;
+    int32_t hl_model_u, hl_view_u, hl_proj_u, hl_color_u, hl_scale_u;
 } scene_internal_data;
 
 scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_shader_handle shadow_shader, mdl_primitive primitive) {
@@ -369,14 +381,12 @@ scene_handle scene_new(scene_desc const* desc) {
     }
 
     /*
-     * Ground renderer — owns 20×20 quad + Lit shader instance.
+     * Ground renderer — owns 20x20 quad + Lit shader instance.
      */
     ground_renderer_init(&handle->ground);
 
     /*
      * BRDF integration LUT — generated once via a GPU render pass.
-     * Used by both mesh materials and the ground plane for correct
-     * metallic specular IBL (split-sum approximation).
      */
     handle->brdf_lut = brdf_lut_generate();
 
@@ -403,7 +413,6 @@ scene_handle scene_new(scene_desc const* desc) {
     /*
      * Loading of the nodes.
      */
-
 
     handle->nodes_count = model->nodes_count;
     handle->nodes = OS_MALLOC(sizeof(struct scene_internal_node) * model->nodes_count);
@@ -487,6 +496,52 @@ scene_handle scene_new(scene_desc const* desc) {
         cur_node = handle->nodes + i;
         cur_node->world_tr = world_tr;
     }
+
+    /*
+     * Highlight shader — inverted-hull outline for selected node.
+     */
+    handle->selected_node_id = -1;
+    {
+        void* hl_vs = device_file_read_text("./Shaders/Highlight.vs");
+        void* hl_fs = device_file_read_text("./Shaders/Highlight.fs");
+        handle->highlight_shader = gfx_shader_create("Highlight");
+        gfx_shader_add_vs(handle->highlight_shader, hl_vs);
+        gfx_shader_add_fs(handle->highlight_shader, hl_fs);
+        gfx_shader_submit(handle->highlight_shader);
+        OS_FREE(hl_vs);
+        OS_FREE(hl_fs);
+
+        gfx_shader_uniform_enable(handle->highlight_shader, "model",         GFX_TYPE_FLOAT_MAT_4, &handle->hl_model_u);
+        gfx_shader_uniform_enable(handle->highlight_shader, "view",          GFX_TYPE_FLOAT_MAT_4, &handle->hl_view_u);
+        gfx_shader_uniform_enable(handle->highlight_shader, "projection",    GFX_TYPE_FLOAT_MAT_4, &handle->hl_proj_u);
+        gfx_shader_uniform_enable(handle->highlight_shader, "outline_scale", GFX_TYPE_FLOAT_VEC_1, &handle->hl_scale_u);
+        gfx_shader_uniform_enable(handle->highlight_shader, "outline_color", GFX_TYPE_FLOAT_VEC_4, &handle->hl_color_u);
+
+        /* Build a highlight pipeline for each mesh primitive (pos + normal only). */
+        for (uint32_t mi = 0; mi < handle->meshes_count; ++mi) {
+            scene_internal_mesh *mesh = handle->meshes + mi;
+            mdl_mesh *m_mesh = model->meshes + mi;
+            for (uint32_t pi = 0; pi < (uint32_t)mesh->primitives_count; ++pi) {
+                scene_internal_mesh_primitive *prim = mesh->primitives + pi;
+                prim->highlight_pipeline = gfx_pipeline_create(handle->highlight_shader);
+                for (int32_t ai = 0; ai < m_mesh->primitives[pi].attributes_count; ++ai) {
+                    mdl_attribute *attr = m_mesh->primitives[pi].attributes + ai;
+                    if (attr->type == MDL_VERTEX_ATTRIBUTE_POSITION) {
+                        gfx_pipeline_attr_enable(prim->highlight_pipeline, ATTR_POSITION_NAME,
+                            prim->buffer_handle, attr->count, attr->offset,
+                            m_mesh->primitives[pi].vertex_stride);
+                    } else if (attr->type == MDL_VERTEX_ATTRIBUTE_NORMAL) {
+                        gfx_pipeline_attr_enable(prim->highlight_pipeline, ATTR_NORMAL_NAME,
+                            prim->buffer_handle, attr->count, attr->offset,
+                            m_mesh->primitives[pi].vertex_stride);
+                    }
+                }
+                gfx_pipeline_index_enable(prim->highlight_pipeline, prim->index_handle);
+                gfx_pipeline_submit(prim->highlight_pipeline);
+            }
+        }
+    }
+
     return handle;
 }
 
@@ -599,7 +654,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
         }
     }
 
-    /* Ground plane — drawn after manipulator so z-fighting is avoided */
+    /* Ground plane */
     if (handle->plane_render) {
         ground_renderer_render(&handle->ground,
                                projection, view.data, view_pos.data,
@@ -609,6 +664,28 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     }
 
     gfx_wireframe_enable(false);
+
+    /* Highlight pass: inverted-hull outline for selected node */
+    if (handle->selected_node_id >= 0) {
+        scene_internal_node *sel = &handle->nodes[handle->selected_node_id];
+        if (sel->mesh_index >= 0 && sel->mesh_index < (int32_t)handle->meshes_count) {
+            scene_internal_mesh *mesh = &handle->meshes[sel->mesh_index];
+            float outline_scale = 0.025f;
+            float outline_color[4] = {1.0f, 0.55f, 0.05f, 1.0f};
+            glCullFace(GL_FRONT);
+            for (int32_t j = 0; j < mesh->primitives_count; ++j) {
+                scene_internal_mesh_primitive *prim = &mesh->primitives[j];
+                gfx_pipeline_bind(prim->highlight_pipeline);
+                gfx_shader_uniform_set(handle->highlight_shader, handle->hl_model_u, sel->world_tr.data);
+                gfx_shader_uniform_set(handle->highlight_shader, handle->hl_view_u,  view.data);
+                gfx_shader_uniform_set(handle->highlight_shader, handle->hl_proj_u,  projection);
+                gfx_shader_uniform_set(handle->highlight_shader, handle->hl_scale_u, &outline_scale);
+                gfx_shader_uniform_set(handle->highlight_shader, handle->hl_color_u, outline_color);
+                gfx_draw_id(prim->draw_type, prim->indices_count);
+            }
+            glCullFace(GL_BACK);
+        }
+    }
 }
 
 bool scene_get_skybox_render(scene_handle handle) {
@@ -644,7 +721,6 @@ float scene_get_skybox_exposure(scene_handle handle) {
     if (!handle->skybox_enabled) {
         return 1.0f;
     }
-
     return skybox_get_exposure(handle->skybox);
 }
 
@@ -652,7 +728,6 @@ void scene_set_skybox_exposure(scene_handle handle, float exposure) {
     if (!handle->skybox_enabled) {
         return;
     }
-
     skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 5.0f));
 }
 
@@ -664,13 +739,11 @@ void scene_set_plane_render(scene_handle handle, bool render) {
     handle->plane_render = render;
 }
 
-
 void scene_delete(scene_handle handle) {
     for(int32_t i=0; i<handle->textures_count; ++i)
         gfx_texture_destroy(handle->textures[i].texture_handle);
     if(handle->textures != 0)
         OS_FREE(handle->textures);
-
 
     if(handle->cameras != 0)
         OS_FREE(handle->cameras);
@@ -686,16 +759,15 @@ void scene_delete(scene_handle handle) {
             gfx_buffer_destroy(primitive->index_handle);
             gfx_pipeline_destroy(primitive->pipeline_handle);
             gfx_pipeline_destroy(primitive->shadow_pipeline);
+            gfx_pipeline_destroy(primitive->highlight_pipeline);
         }
         OS_FREE(mesh->primitives);
     }
 
     if(handle->materials != 0) {
-
         for (int32_t i = 0; i < handle->materials_count; ++i) {
             gfx_shader_destroy(handle->materials[i].shader);
         }
-
         OS_FREE(handle->materials);
     }
 
@@ -716,6 +788,8 @@ void scene_delete(scene_handle handle) {
     gfx_texture_destroy(handle->brdf_lut);
     if (handle->prefiltered_env_id)
         prefilter_env_destroy(handle->prefiltered_env_id);
+    if (handle->highlight_shader)
+        gfx_shader_destroy(handle->highlight_shader);
 
     OS_FREE(handle->root_nodes);
     OS_FREE(handle->nodes);
@@ -764,7 +838,6 @@ void scene_node_children_count(scene_handle handle, scene_node* node, int32_t* c
     scene_internal_node *node_int = (scene_internal_node *) node->internal;
     *count = node_int->children_count;
 }
-
 
 void scene_camera_count(scene_handle handle, int32_t* count){
     *count = handle->cameras_count;
@@ -821,7 +894,6 @@ void scene_node_set_world_tr(scene_handle handle, scene_node* node, float* tr){
         cur_node = handle->nodes + i;
         cur_node->world_tr = world_tr;
     }
-
 }
 
 void scene_node_get_local_tr(scene_handle handle, scene_node* node, float* tr){
@@ -831,7 +903,7 @@ void scene_node_get_local_tr(scene_handle handle, scene_node* node, float* tr){
 
 void scene_node_set_local_tr(scene_handle handle, scene_node* node, float* tr){
     scene_internal_node *node_int = (scene_internal_node *) node->internal;
-    os_memcpy(node_int->local_tr.data, tr, sizeof(gl_mat));
+    os_memcpy(node_int->local_tr.data, tr, sizeof(float) * 16);
 
     scene_internal_node *cur_node = node_int;
     for(int32_t i=0; i<handle->nodes_count; ++i) {
@@ -852,7 +924,8 @@ void scene_node_set_local_tr(scene_handle handle, scene_node* node, float* tr){
         }
         cur_node = handle->nodes + i;
         cur_node->world_tr = world_tr;
-    }}
+    }
+}
 
 void scene_node_root_count(scene_handle handle, int32_t *count) {
     *count = handle->root_nodes_count;
@@ -876,4 +949,61 @@ void scene_camera_get_at(scene_handle handle, int32_t index, struct scene_node *
     camera_data->ar = int_camera->ar;
     camera_data->fov = int_camera->fov;
     os_memcpy(camera_data->projection, int_camera->projection.data, sizeof(gl_mat));
+}
+
+void scene_camera_set(scene_handle handle, scene_node* node, scene_camera* camera_data) {
+    scene_node_set_camera(handle, node, camera_data);
+}
+
+/* ---- Selection ---- */
+
+void scene_set_selected_node(scene_handle handle, scene_node* node) {
+    if (node == NULL) {
+        handle->selected_node_id = -1;
+    } else {
+        scene_internal_node *n = (scene_internal_node *)node->internal;
+        handle->selected_node_id = n->local_id;
+    }
+}
+
+bool scene_get_selected_node(scene_handle handle, scene_node* node_out) {
+    if (handle->selected_node_id < 0) return false;
+    scene_node_get_at(handle, handle->selected_node_id, node_out);
+    return true;
+}
+
+/* ---- Material inspection ---- */
+
+int32_t scene_node_get_material_count(scene_handle handle, scene_node* node) {
+    scene_internal_node *n = (scene_internal_node *)node->internal;
+    if (n->mesh_index < 0 || n->mesh_index >= (int32_t)handle->meshes_count) return 0;
+    return handle->meshes[n->mesh_index].primitives_count;
+}
+
+void scene_node_get_material(scene_handle handle, scene_node* node, int32_t mat_idx,
+                             float color[4], float* metallic, float* roughness) {
+    scene_internal_node *n = (scene_internal_node *)node->internal;
+    if (n->mesh_index < 0) return;
+    scene_internal_mesh *mesh = &handle->meshes[n->mesh_index];
+    if (mat_idx < 0 || mat_idx >= mesh->primitives_count) return;
+    int32_t mid = mesh->primitives[mat_idx].material_id;
+    if (mid < 0 || mid >= (int32_t)handle->materials_count) return;
+    scene_internal_pbr_material *mat = &handle->materials[mid];
+    if (color)     os_memcpy(color, mat->color_factor, sizeof(float) * 4);
+    if (metallic)  *metallic  = mat->metallic_factor;
+    if (roughness) *roughness = mat->roughness_factor;
+}
+
+void scene_node_set_material(scene_handle handle, scene_node* node, int32_t mat_idx,
+                             float color[4], float metallic, float roughness) {
+    scene_internal_node *n = (scene_internal_node *)node->internal;
+    if (n->mesh_index < 0) return;
+    scene_internal_mesh *mesh = &handle->meshes[n->mesh_index];
+    if (mat_idx < 0 || mat_idx >= mesh->primitives_count) return;
+    int32_t mid = mesh->primitives[mat_idx].material_id;
+    if (mid < 0 || mid >= (int32_t)handle->materials_count) return;
+    scene_internal_pbr_material *mat = &handle->materials[mid];
+    if (color) os_memcpy(mat->color_factor, color, sizeof(float) * 4);
+    mat->metallic_factor  = metallic;
+    mat->roughness_factor = roughness;
 }

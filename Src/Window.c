@@ -48,6 +48,10 @@ scene_view_handle views[2];
 
 scene_handle active_scene;
 mdl_handle model;
+
+/* Selected node for object/material inspector (-1 = none) */
+static scene_node selected_node;
+static bool      selected_node_valid = false;
 device_handle device;
 
 typedef struct {
@@ -272,6 +276,8 @@ static void window_view_options(void)
 }
 
 static void window_scene_view_overlay(void);
+static void window_object_inspector(void);
+static void window_material_inspector(void);
 
 static manipulator_demo demo;
 
@@ -367,6 +373,11 @@ void window_scene_view_draw(){
             manipulator_demo_draw_ui(&demo);
             igSeparator();
 
+            /* ---- Object inspector ---- */
+            window_object_inspector();
+            window_material_inspector();
+            igSeparator();
+
             /* ---- Camera control hints ---- */
             igTextDisabled("KONTROLE");
             igText("Desni klik     Rotacija");
@@ -389,6 +400,102 @@ void window_scene_view_draw(){
 
 static void window_scene_view_overlay(void)
 {
+}
+
+/* ---- Object inspector helpers ---- */
+
+static void window_node_tree_recursive(scene_node* parent, int depth) {
+    int32_t child_count = 0;
+    scene_node_children_count(active_scene, parent, &child_count);
+
+    ImGuiTreeNodeFlags_ flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                                ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (child_count == 0)
+        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+    bool is_selected = selected_node_valid && selected_node.internal == parent->internal;
+    if (is_selected)
+        flags |= ImGuiTreeNodeFlags_Selected;
+
+    const char* label = (parent->name && parent->name[0]) ? parent->name : "(bez naziva)";
+    bool open = igTreeNodeEx_Str(label, flags);
+
+    if (igIsItemClicked(0)) {
+        if (is_selected) {
+            /* Deselect on second click */
+            selected_node_valid = false;
+            scene_set_selected_node(active_scene, NULL);
+        } else {
+            selected_node = *parent;
+            selected_node_valid = true;
+            scene_set_selected_node(active_scene, &selected_node);
+        }
+        scene_view_flag_dirty(views[0]);
+    }
+
+    if (open && child_count > 0) {
+        for (int32_t i = 0; i < child_count; ++i) {
+            scene_node child = {0};
+            scene_node_children_get_at(active_scene, i, parent, &child);
+            window_node_tree_recursive(&child, depth + 1);
+        }
+        igTreePop();
+    }
+}
+
+static void window_object_inspector(void) {
+    igTextDisabled("OBJEKTI");
+    igSpacing();
+
+    int32_t root_count = 0;
+    scene_node_root_count(active_scene, &root_count);
+
+    for (int32_t i = 0; i < root_count; ++i) {
+        scene_node root = {0};
+        scene_node_root_get_at(active_scene, i, &root);
+        window_node_tree_recursive(&root, 0);
+    }
+}
+
+static void window_material_inspector(void) {
+    if (!selected_node_valid) return;
+
+    int32_t mat_count = scene_node_get_material_count(active_scene, &selected_node);
+    if (mat_count <= 0) return;
+
+    igSeparator();
+    igTextDisabled("MATERIJAL");
+    igSpacing();
+
+    for (int32_t i = 0; i < mat_count; ++i) {
+        float color[4]   = {1.0f, 1.0f, 1.0f, 1.0f};
+        float metallic   = 0.0f;
+        float roughness  = 0.5f;
+        scene_node_get_material(active_scene, &selected_node, i, color, &metallic, &roughness);
+
+        char label[64];
+        if (mat_count > 1)
+            snprintf(label, sizeof(label), "Primitiv %d", i + 1);
+        else
+            snprintf(label, sizeof(label), "Boja");
+
+        bool changed = false;
+        igPushID_Int(i);
+
+        changed |= igColorEdit4(label, color,
+            ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_PickerHueWheel);
+        changed |= igSliderFloat("Metalnost",  &metallic,  0.0f, 1.0f, "%.2f", 0);
+        changed |= igSliderFloat("Hrapavost",  &roughness, 0.0f, 1.0f, "%.2f", 0);
+
+        if (changed) {
+            scene_node_set_material(active_scene, &selected_node, i, color, metallic, roughness);
+            scene_view_flag_dirty(views[0]);
+        }
+
+        igPopID();
+        if (i + 1 < mat_count) igSpacing();
+    }
 }
 
 void window_log(){

@@ -85,4 +85,15 @@ IBC_API void scene_node_set_world_tr(scene_handle handle, scene_node* node, floa
 IBC_API void scene_node_get_local_tr(scene_handle handle, scene_node* node, float* tr);
 IBC_API void scene_node_set_local_tr(scene_handle handle, scene_node* node, float* tr);
 
+/* Selection + highlight */
+IBC_API void scene_set_selected_node(scene_handle handle, scene_node* node); /* NULL = deselect */
+IBC_API bool scene_get_selected_node(scene_handle handle, scene_node* node_out);
+
+/* Material inspection */
+IBC_API int32_t scene_node_get_material_count(scene_handle handle, scene_node* node);
+IBC_API void    scene_node_get_material(scene_handle handle, scene_node* node, int32_t mat_idx,
+                                        float color[4], float* metallic, float* roughness);
+IBC_API void    scene_node_set_material(scene_handle handle, scene_node* node, int32_t mat_idx,
+                                        float color[4], float metallic, float roughness);
+
 #endif //IBCWEB_SCENE_H
