@@ -7,6 +7,7 @@ varying vec4 color;
 
 uniform vec3  view_position;
 uniform samplerCube skybox;
+uniform samplerCube prefiltered_env;
 
 uniform vec3  base_color;
 uniform float roughness;
@@ -17,7 +18,9 @@ uniform sampler2D shadow_map;
 uniform mat4      light_space;
 uniform sampler2D brdf_lut;
 
-/* ---- PCF shadow ---- */
+#define PREFILTER_MIPS 5
+
+/* ---- Poisson disk 16-sample PCF soft shadows ---- */
 float shadow_calc(float NdotL)
 {
     vec4 ls   = light_space * vec4(position, 1.0);
@@ -33,19 +36,41 @@ float shadow_calc(float NdotL)
         return 0.0;
     }
 
-    float bias   = max(0.005 * (1.0 - NdotL), 0.001);
-    float shadow = 0.0;
-    vec2 texel   = 1.0 / vec2(shadow_size);
+    vec2 poisson_disk[16];
+    poisson_disk[ 0] = vec2(-0.94201624, -0.39906216);
+    poisson_disk[ 1] = vec2( 0.94558609, -0.76890725);
+    poisson_disk[ 2] = vec2(-0.09418410, -0.92938870);
+    poisson_disk[ 3] = vec2( 0.34495938,  0.29387760);
+    poisson_disk[ 4] = vec2(-0.91588581,  0.45771432);
+    poisson_disk[ 5] = vec2(-0.81544232, -0.87912464);
+    poisson_disk[ 6] = vec2(-0.38277543,  0.27676845);
+    poisson_disk[ 7] = vec2( 0.97484398,  0.75648379);
+    poisson_disk[ 8] = vec2( 0.44323325, -0.97511554);
+    poisson_disk[ 9] = vec2( 0.53742981, -0.47373420);
+    poisson_disk[10] = vec2(-0.26496911, -0.41893023);
+    poisson_disk[11] = vec2( 0.79197514,  0.19090188);
+    poisson_disk[12] = vec2(-0.24188840,  0.99706507);
+    poisson_disk[13] = vec2(-0.81409955,  0.91437590);
+    poisson_disk[14] = vec2( 0.19984126,  0.78641367);
+    poisson_disk[15] = vec2( 0.14383161, -0.14100790);
 
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            float closest = texture(shadow_map, proj.xy + vec2(x, y) * texel).r;
-            shadow += proj.z - bias > closest ? 1.0 : 0.0;
-        }
+    float theta = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)
+                  * 6.28318;
+    mat2 rot = mat2(cos(theta), -sin(theta), sin(theta), cos(theta));
+
+    float bias   = max(0.003 * (1.0 - NdotL), 0.0008);
+    float shadow = 0.0;
+    vec2  texel  = 1.0 / vec2(shadow_size);
+    const float SOFTNESS = 2.5;
+
+    for (int i = 0; i < 16; ++i) {
+        vec2  offset  = rot * poisson_disk[i] * texel * SOFTNESS;
+        float closest = texture(shadow_map, proj.xy + offset).r;
+        shadow += proj.z - bias > closest ? 1.0 : 0.0;
     }
 
-    shadow /= 9.0;
-    return shadow * 0.5;
+    shadow /= 16.0;
+    return shadow * 0.75;
 }
 
 /* ---- Schlick Fresnel ---- */
@@ -54,8 +79,8 @@ vec3 fresnel_schlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-/* ---- Environment sample with horizon fallback ---- */
-vec3 env_sample(vec3 dir)
+/* ---- Diffuse irradiance from raw skybox ---- */
+vec3 env_irradiance(vec3 dir)
 {
     vec3 s = texture(skybox, dir).rgb;
     vec3 floor_color = mix(vec3(0.08, 0.09, 0.10),
@@ -79,49 +104,27 @@ void main()
     float r = clamp(roughness, 0.05, 1.0);
     float m = clamp(metallic,  0.0,  1.0);
 
-    /*
-     * PBR F0:
-     *   dielectrics → 0.04 (common non-metal reflectance)
-     *   metals      → base_color (metals tint their reflections)
-     */
     vec3 F0 = mix(vec3(0.04), base_color, m);
 
-    /* Fresnel at view angle (drives IBL split) and at half-vector (direct spec) */
     vec3 F_ibl    = fresnel_schlick(NdotV, F0);
     vec3 F_direct = fresnel_schlick(NdotH, F0);
 
-    /*
-     * Diffuse fraction: energy not taken by specular, and zero for metals.
-     * (1 - F) gives conservation; * (1 - m) kills diffuse for metals.
-     */
     vec3 kD = (1.0 - F_ibl) * (1.0 - m);
 
-    /* ---- IBL — split-sum approximation ---- */
+    /* Specular IBL: pre-filtered env at roughness mip */
+    float mip_level = r * float(PREFILTER_MIPS - 1);
+    vec3  env_spec  = textureLod(prefiltered_env, R, mip_level).rgb;
 
-    /*
-     * Specular: pre-filtered environment (skybox ≈ fully sharp, so we dim
-     * by roughness to fake the blurring a real pre-filter would give).
-     */
-    vec3 env_spec = env_sample(R) * (1.0 - r * 0.75);
+    /* Diffuse IBL: raw skybox along N */
+    vec3 irradiance = env_irradiance(N) * 0.45;
 
-    /*
-     * Diffuse irradiance: sample skybox along N as an upper-hemisphere
-     * average (no separate irradiance map needed).
-     */
-    vec3 irradiance = env_sample(N) * 0.45;
-
-    /*
-     * BRDF LUT lookup: (NdotV, roughness) → (scale, bias).
-     *   specular_ibl = prefilteredColor * (F0 * scale + bias)
-     * This correctly accounts for Fresnel and geometry shadowing
-     * across all view angles and roughness values.
-     */
-    vec2 brdf      = texture(brdf_lut, vec2(NdotV, r)).rg;
-    vec3 spec_ibl  = env_spec * (F0 * brdf.x + brdf.y);
+    /* BRDF LUT split-sum */
+    vec2 brdf     = texture(brdf_lut, vec2(NdotV, r)).rg;
+    vec3 spec_ibl = env_spec * (F0 * brdf.x + brdf.y);
 
     vec3 ambient = kD * base_color * irradiance + spec_ibl;
 
-    /* ---- Direct lighting ---- */
+    /* Direct lighting */
     vec3 sun = vec3(1.1, 1.05, 1.0);
 
     float shininess = mix(256.0, 4.0, r * r);
