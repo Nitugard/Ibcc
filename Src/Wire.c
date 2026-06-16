@@ -112,10 +112,14 @@ void wire_clear(wire_handle handle, uint64_t position) {
 }
 
 void wire_draw(wire_handle handle, float projection[16], float view[16]) {
+    gfx_depth_test_enable(true);
+    gfx_cull_enable(false);
     gfx_pipeline_bind(handle->list.pip);
     gfx_shader_uniform_set(handle->list.shader, handle->list.projection_uniform, projection);
     gfx_shader_uniform_set(handle->list.shader, handle->list.view_uniform, view);
     gfx_draw(GFX_LINES, 0, handle->list.buffer_count);
+    gfx_cull_enable(true);
+    gfx_depth_test_enable(true);
 }
 
 void wire_grid(wire_handle handle, uint32_t segments, int mode) {

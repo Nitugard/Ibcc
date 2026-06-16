@@ -233,17 +233,17 @@ void scene_view_render(scene_view_handle handle,void* scene) {
         gl_mat tr = handle->controller.rotation;
         tr = gl_mat_set_translation(tr, handle->controller.position);
 
-        if (handle->gizmos_visible) {
-            wire_clear_all(handle->wire);
-            wire_axis(handle->wire, handle->controller.offset.data);
-            wire_draw(handle->wire, handle->controller.projection.data, gl_mat_inverse(tr).data);
-        }
-
         scene_draw_with_camera(scene,
                                handle->controller.projection.data,
                                tr.data,
                                handle->view_type == SCENE_VIEW_PERSPECTIVE,
                                handle->wireframe);
+
+        if (handle->gizmos_visible) {
+            wire_clear_all(handle->wire);
+            wire_axis(handle->wire, handle->controller.offset.data);
+            wire_draw(handle->wire, handle->controller.projection.data, gl_mat_inverse(tr).data);
+        }
         gfx_end_pass();
 
         handle->dirty = false;

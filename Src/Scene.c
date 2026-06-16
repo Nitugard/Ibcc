@@ -131,6 +131,7 @@ typedef struct scene_internal_data{
     skybox_handle skybox;
     bool skybox_enabled;
     bool skybox_render;
+    bool plane_render;
 
     /* Shadow pass resources */
     gfx_shader_handle    shadow_shader;
@@ -238,6 +239,7 @@ scene_handle scene_new(scene_desc const* desc) {
 
     handle->skybox_enabled = desc->skybox.path != 0;
     handle->skybox_render = desc->skybox.render;
+    handle->plane_render = true;
     if(desc->skybox.path != 0) {
         handle->skybox = skybox_load(desc->skybox.path);
     }
@@ -610,7 +612,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     }
 
     /* Ground plane — drawn after manipulator so z-fighting is avoided */
-    {
+    if (handle->plane_render) {
         gl_mat  model_id   = gl_mat_new_identity();
         float   gnd_col[3] = {0.50f, 0.50f, 0.48f};
         float   gnd_rough  = 0.92f;
@@ -642,6 +644,22 @@ void scene_set_skybox_render(scene_handle handle, bool render) {
     handle->skybox_render = render;
 }
 
+void scene_set_skybox_path(scene_handle handle, const char* path) {
+    float exposure = scene_get_skybox_exposure(handle);
+
+    if (handle->skybox_enabled) {
+        skybox_destroy(handle->skybox);
+        handle->skybox = 0;
+        handle->skybox_enabled = false;
+    }
+
+    if (path != 0 && path[0] != '\0') {
+        handle->skybox = skybox_load(path);
+        skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 5.0f));
+        handle->skybox_enabled = true;
+    }
+}
+
 float scene_get_skybox_exposure(scene_handle handle) {
     if (!handle->skybox_enabled) {
         return 1.0f;
@@ -656,6 +674,14 @@ void scene_set_skybox_exposure(scene_handle handle, float exposure) {
     }
 
     skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 5.0f));
+}
+
+bool scene_get_plane_render(scene_handle handle) {
+    return handle->plane_render;
+}
+
+void scene_set_plane_render(scene_handle handle, bool render) {
+    handle->plane_render = render;
 }
 
 

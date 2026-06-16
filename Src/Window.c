@@ -10,6 +10,13 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include "Window.h"
 #include "Device.h"
 #include "Gui.h"
@@ -24,7 +31,8 @@
 #include "GlMath.h"
 
 #define MAXIMUM_WINDOW_LOGS 1024
-#define DEFAULT_SKYBOX_PATH "./Data/studio_small_08_4k.hdr"
+#define MAXIMUM_SKYBOX_OPTIONS 32
+#define DEFAULT_SKYBOX_PATH "./Data/Default.hdr"
 
 typedef struct window_log_data{
     char* log;
@@ -53,13 +61,23 @@ static window_project_info project_info = {
     .project_name  = "Graficki prikaz manipulatora",
     .student_name  = "Dragutin Sredojevic",
     .professor_name= "Dusan Nedeljkovic",
-    .course_name   = "Kompjuterska Grafika",
-    .faculty_name  = "Masinski Fakultet",
+    .course_name   = "Kompjuterska grafika",
+    .faculty_name  = "Masinski fakultet",
 };
 
 static float frame_dt = 0.0f;
 
 float bg_color[4] = {0.09f, 0.09f, 0.12f, 1.0f};
+
+typedef struct skybox_option {
+    char label[128];
+    char path[MAXIMUM_PATH_LENGTH];
+} skybox_option;
+
+static skybox_option skybox_options[MAXIMUM_SKYBOX_OPTIONS];
+static const char* skybox_option_labels[MAXIMUM_SKYBOX_OPTIONS];
+static int32_t skybox_options_count = 0;
+static int32_t selected_skybox = 0;
 
 void window_on_gfx_log(char const* log, bool error) {
     if (logs_count == MAXIMUM_WINDOW_LOGS) {
@@ -75,6 +93,122 @@ void window_on_gfx_log(char const* log, bool error) {
     logs_count++;
 }
 
+static bool window_skybox_option_exists(const char* path)
+{
+    for (int32_t i = 0; i < skybox_options_count; ++i) {
+        if (strcmp(skybox_options[i].path, path) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void window_skybox_label_from_file(char* dst, int32_t dst_size, const char* file_name)
+{
+    snprintf(dst, dst_size, "%s", file_name);
+    char* ext = strrchr(dst, '.');
+    if (ext != 0) {
+        *ext = '\0';
+    }
+}
+
+static void window_skybox_options_add(const char* label, const char* path)
+{
+    if (skybox_options_count >= MAXIMUM_SKYBOX_OPTIONS || window_skybox_option_exists(path)) {
+        return;
+    }
+
+    snprintf(skybox_options[skybox_options_count].label,
+             sizeof(skybox_options[skybox_options_count].label),
+             "%s",
+             label);
+    snprintf(skybox_options[skybox_options_count].path,
+             sizeof(skybox_options[skybox_options_count].path),
+             "%s",
+             path);
+    skybox_option_labels[skybox_options_count] = skybox_options[skybox_options_count].label;
+    skybox_options_count += 1;
+}
+
+static void window_skybox_options_scan_hdr_folder(const char* folder)
+{
+#ifdef _WIN32
+    char pattern[MAXIMUM_PATH_LENGTH];
+    snprintf(pattern, sizeof(pattern), "%s*.hdr", folder);
+
+    WIN32_FIND_DATAA data;
+    HANDLE find = FindFirstFileA(pattern, &data);
+    if (find == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    do {
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            char path[MAXIMUM_PATH_LENGTH];
+            char label[128];
+            snprintf(path, sizeof(path), "%s%s", folder, data.cFileName);
+            window_skybox_label_from_file(label, sizeof(label), data.cFileName);
+            window_skybox_options_add(label, path);
+        }
+    } while (FindNextFileA(find, &data));
+
+    FindClose(find);
+#else
+    (void)folder;
+#endif
+}
+
+static void window_skybox_options_scan_cubemap_folders(void)
+{
+#ifdef _WIN32
+    WIN32_FIND_DATAA data;
+    HANDLE find = FindFirstFileA("./Data/skyboxes/*", &data);
+    if (find == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    do {
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+            strcmp(data.cFileName, ".") != 0 &&
+            strcmp(data.cFileName, "..") != 0) {
+            char path[MAXIMUM_PATH_LENGTH];
+            snprintf(path, sizeof(path), "./Data/skyboxes/%s/", data.cFileName);
+            window_skybox_options_add(data.cFileName, path);
+        }
+    } while (FindNextFileA(find, &data));
+
+    FindClose(find);
+#endif
+}
+
+static void window_skybox_options_select_path(const char* path)
+{
+    selected_skybox = 0;
+    for (int32_t i = 0; i < skybox_options_count; ++i) {
+        if (strcmp(skybox_options[i].path, path) == 0) {
+            selected_skybox = i;
+            return;
+        }
+    }
+}
+
+static void window_skybox_options_refresh(void)
+{
+    skybox_options_count = 0;
+    selected_skybox = 0;
+
+    window_skybox_options_scan_hdr_folder("./Data/");
+    window_skybox_options_scan_hdr_folder("./Data/hdri/");
+    window_skybox_options_scan_cubemap_folders();
+
+    if (skybox_options_count == 0) {
+        window_skybox_options_add("Default", DEFAULT_SKYBOX_PATH);
+    }
+
+    window_skybox_options_select_path(DEFAULT_SKYBOX_PATH);
+}
+
 void window_scene_views_mark_as_dirty(){
     if (views[0]) scene_view_flag_dirty(views[0]);
 }
@@ -86,38 +220,53 @@ void window_scene_view_create(){
 
 static void window_view_options(void)
 {
+    if (skybox_options_count > 0) {
+        int current_skybox = selected_skybox;
+        if (igCombo_Str_arr("Okruzenje", &current_skybox, skybox_option_labels, skybox_options_count, 8)) {
+            selected_skybox = current_skybox;
+            scene_set_skybox_path(active_scene, skybox_options[selected_skybox].path);
+            scene_view_flag_dirty(views[0]);
+        }
+    }
+
     float fov = scene_view_get_fov(views[0]);
-    if (igSliderFloat("FOV", &fov, 10.0f, 120.0f, "%.1f", 0))
+    if (igSliderFloat("Vidno polje", &fov, 10.0f, 120.0f, "%.1f", 0))
         scene_view_set_fov(views[0], fov);
 
     scene_view_type view_type = scene_view_get_type(views[0]);
-    if (igRadioButton_Bool("Front", view_type == SCENE_VIEW_ORTOGRAPHIC_FRONT))
+    if (igRadioButton_Bool("Prednja", view_type == SCENE_VIEW_ORTOGRAPHIC_FRONT))
         scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_FRONT);
     igSameLine(0.0f, -1.0f);
-    if (igRadioButton_Bool("Side", view_type == SCENE_VIEW_ORTOGRAPHIC_SIDE))
+    if (igRadioButton_Bool("Bocna", view_type == SCENE_VIEW_ORTOGRAPHIC_SIDE))
         scene_view_set_type(views[0], SCENE_VIEW_ORTOGRAPHIC_SIDE);
     igSameLine(0.0f, -1.0f);
-    if (igRadioButton_Bool("Perspective", view_type == SCENE_VIEW_PERSPECTIVE))
+    if (igRadioButton_Bool("Perspektiva", view_type == SCENE_VIEW_PERSPECTIVE))
         scene_view_set_type(views[0], SCENE_VIEW_PERSPECTIVE);
 
     bool show_gizmos = scene_view_get_gizmos_visible(views[0]);
-    if (igCheckbox("Show gizmos", &show_gizmos))
+    if (igCheckbox("Prikazi ose", &show_gizmos))
         scene_view_set_gizmos_visible(views[0], show_gizmos);
 
     bool show_skybox = scene_get_skybox_render(active_scene);
-    if (igCheckbox("Show skybox", &show_skybox)) {
+    if (igCheckbox("Prikazi okruzenje", &show_skybox)) {
         scene_set_skybox_render(active_scene, show_skybox);
         scene_view_flag_dirty(views[0]);
     }
 
+    bool show_plane = scene_get_plane_render(active_scene);
+    if (igCheckbox("Prikazi ravan", &show_plane)) {
+        scene_set_plane_render(active_scene, show_plane);
+        scene_view_flag_dirty(views[0]);
+    }
+
     float skybox_exposure = scene_get_skybox_exposure(active_scene);
-    if (igSliderFloat("HDR Exposure", &skybox_exposure, 0.1f, 5.0f, "%.2f", 0)) {
+    if (igSliderFloat("HDR ekspozicija", &skybox_exposure, 0.1f, 5.0f, "%.2f", 0)) {
         scene_set_skybox_exposure(active_scene, skybox_exposure);
         scene_view_flag_dirty(views[0]);
     }
 
     bool wireframe = scene_view_get_wireframe(views[0]);
-    if (igCheckbox("Wireframe shading", &wireframe))
+    if (igCheckbox("Zicani prikaz", &wireframe))
         scene_view_set_wireframe(views[0], wireframe);
 }
 
@@ -202,7 +351,7 @@ void window_scene_view_draw(){
             igTextWrapped("%s", project_info.project_name);
             igPopStyleColor(1);
             igSpacing();
-            igText("Student:  %s", project_info.student_name);
+            igText("Student: %s", project_info.student_name);
             igText("Profesor: %s", project_info.professor_name);
             igSeparator();
 
@@ -219,18 +368,14 @@ void window_scene_view_draw(){
 
             /* ---- Camera control hints ---- */
             igTextDisabled("KONTROLE");
-            igText("Desni klik    Rotacija");
-            igText("Srednji klik  Pomak");
-            igText("Tocak         Zum");
+            igText("Desni klik     Rotacija");
+            igText("Srednji klik   Pomeranje");
+            igText("Tockic         Zumiranje");
             igSeparator();
 
             /* ---- Stats ---- */
-            igTextDisabled("STATISTIKE");
+            igTextDisabled("STATISTIKA");
             {
-                int32_t nodes = 0, meshes = 0;
-                scene_node_count(active_scene, &nodes);
-                scene_mesh_count(active_scene, &meshes);
-                igText("Cvorovi: %d   Mreze: %d", nodes, meshes);
                 igText("FPS: %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
             }
             igSeparator();
@@ -243,25 +388,6 @@ void window_scene_view_draw(){
 
 static void window_scene_view_overlay(void)
 {
-    ImVec2 window_pos;
-    igGetWindowPos(&window_pos);
-    igSetCursorScreenPos((ImVec2){window_pos.x + 14.0f, window_pos.y + 14.0f});
-
-    igPushStyleColor_Vec4(ImGuiCol_ChildBg, (ImVec4){0.02f, 0.02f, 0.03f, 0.42f});
-    igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){0.96f, 0.96f, 0.98f, 1.00f});
-    igBeginChild_Str("ViewportOverlay",
-                     (ImVec2){270.0f, 58.0f},
-                     false,
-                     ImGuiWindowFlags_NoScrollbar |
-                     ImGuiWindowFlags_NoScrollWithMouse |
-                     ImGuiWindowFlags_NoInputs);
-    {
-        igSpacing();
-        igText("Manipulator Demo");
-        igTextDisabled("RMB rotate | MMB pan | Wheel zoom");
-    }
-    igEndChild();
-    igPopStyleColor(2);
 }
 
 void window_log(){
@@ -430,16 +556,16 @@ static void window_manipulator_controls(void)
     ImVec2 avail; igGetContentRegionAvail(&avail);
     float hw = (avail.x - igGetStyle()->ItemSpacing.x) * 0.5f;
 
-    if (igButton("Reset manipulator", (ImVec2){-1.0f, 0.0f}))
+    if (igButton("Resetuj manipulator", (ImVec2){-1.0f, 0.0f}))
         window_reset_manipulator();
 
-    if (igButton("Play demo animation", (ImVec2){-1.0f, 0.0f})) {
+    if (igButton("Pokreni demo animaciju", (ImVec2){-1.0f, 0.0f})) {
         demo_autoplay = true;
         demo_phase = 0;
         demo_phase_time = 0.0f;
     }
 
-    if (igButton("Pause", (ImVec2){-1.0f, 0.0f})) {
+    if (igButton("Pauziraj", (ImVec2){-1.0f, 0.0f})) {
         demo_autoplay = false;
         hold = false;
         release = false;
@@ -448,16 +574,16 @@ static void window_manipulator_controls(void)
 
     igSeparator();
 
-    if (igButton("Pomak X", (ImVec2){-1.0f, 0.0f}))
+    if (igButton("Pomeranje X", (ImVec2){-1.0f, 0.0f}))
         nauo2_side *= -1;
 
     bool rot_active = false;
-    igButton("CW",  (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
+    igButton("Udesno",  (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir = -1.0f; rot_active = true; }
     igSameLine(0.0f, -1.0f);
-    igButton("CCW", (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
+    igButton("Ulevo", (ImVec2){hw, 0.0f}); if (igIsItemActive()) { nau01_rot_dir =  1.0f; rot_active = true; }
     if (!rot_active) nau01_rot_dir = 0.0f;
 
-    if (igButton("Pomak Y", (ImVec2){-1.0f, 0.0f})) {
+    if (igButton("Pomeranje Y", (ImVec2){-1.0f, 0.0f})) {
         nauo_side *= -1;
         target_height = (nauo_side > 0) ? start_height : end_height;
     }
@@ -633,6 +759,7 @@ void window_init(struct window_config const* config) {
     gui_init();
 
     gfx_log_callback_set(window_on_gfx_log);
+    window_skybox_options_refresh();
 
     model = mdl_load("./Data/Manipulator.gltf");
     scene_desc desc = {
