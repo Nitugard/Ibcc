@@ -4,7 +4,7 @@
 int main(int argc, char** argv) {
 
     window_config config = {
-            .vsync = true,
+            .vsync = false,
             .fullscreen = false,
             .width = 1360,
             .height = 768,

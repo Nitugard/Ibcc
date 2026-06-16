@@ -232,9 +232,7 @@ device_handle device_new(const char* name, int32_t width, int32_t height, bool v
     glfwSetKeyCallback(window, glfw_key_callback);
     glfwSetScrollCallback(window, glfw_scroll_callback);
 
-    if (vsync) {
-        glfwSwapInterval(1);
-    }
+    glfwSwapInterval(vsync ? 1 : 0);
 
     device_handle handle = OS_MALLOC(sizeof(device_data));
     os_memset(handle, 0, sizeof(device_data));

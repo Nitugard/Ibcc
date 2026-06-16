@@ -186,8 +186,12 @@ void scene_view_update_controller(scene_view_handle handle) {
         }
 
         if (joystick.mouse.mmb_down) {
-            gl_vec3 move = gl_vec3_new(-joystick.pointer.dx * dt,
-                                       joystick.pointer.dy * dt, 0);
+            /* Pan is driven by mouse pixel deltas which already scale with 1/FPS,
+               so multiplying by dt would make speed proportional to 1/FPS^2.
+               Use a fixed scale matching the original 75 FPS feel (dt ≈ 1/75). */
+            const float pan_scale = 1.0f / 75.0f;
+            gl_vec3 move = gl_vec3_new(-joystick.pointer.dx * pan_scale,
+                                       joystick.pointer.dy * pan_scale, 0);
             handle->controller.offset = gl_vec3_add(handle->controller.offset,
                                                     gl_mat_mul_vec(handle->controller.rotation, move));
             has_changed_position = true;
