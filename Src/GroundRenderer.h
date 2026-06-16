@@ -18,7 +18,7 @@ typedef struct {
 
     int32_t model_u, proj_u, view_u, viewpos_u;
     int32_t roughness_u, metallic_u, color_u;
-    int32_t skybox_u, exposure_u, shadowmap_u, lightspace_u;
+    int32_t skybox_u, exposure_u, shadowmap_u, lightspace_u, brdf_lut_u;
 } ground_renderer;
 
 /* Allocate GPU resources (20×20 quad + Lit shader). */
@@ -32,7 +32,8 @@ void ground_renderer_render(ground_renderer* gr,
                              int32_t skybox_unit,
                              float   exposure,
                              int32_t shadow_unit,
-                             float   light_space[16]);
+                             float   light_space[16],
+                             int32_t brdf_unit);
 
 /* Free all GPU resources. */
 void ground_renderer_destroy(ground_renderer* gr);

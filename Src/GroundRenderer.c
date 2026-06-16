@@ -57,12 +57,14 @@ void ground_renderer_init(ground_renderer* gr)
     gfx_shader_uniform_enable(gr->shader, "exposure",                GFX_TYPE_FLOAT_VEC_1, &gr->exposure_u);
     gfx_shader_uniform_enable(gr->shader, "shadow_map",              GFX_TYPE_SAMPLER_2D,  &gr->shadowmap_u);
     gfx_shader_uniform_enable(gr->shader, "light_space",             GFX_TYPE_FLOAT_MAT_4, &gr->lightspace_u);
+    gfx_shader_uniform_enable(gr->shader, "brdf_lut",                GFX_TYPE_SAMPLER_2D,  &gr->brdf_lut_u);
 }
 
 void ground_renderer_render(ground_renderer* gr,
                              float projection[16], float view[16], float view_pos[3],
                              int32_t skybox_unit, float exposure,
-                             int32_t shadow_unit, float light_space[16])
+                             int32_t shadow_unit, float light_space[16],
+                             int32_t brdf_unit)
 {
     static const float color[3]    = {0.50f, 0.50f, 0.48f};
     static       float roughness   = 0.92f;
@@ -70,17 +72,18 @@ void ground_renderer_render(ground_renderer* gr,
     gl_mat model = gl_mat_new_identity();
 
     gfx_pipeline_bind(gr->pipeline);
-    gfx_shader_uniform_set(gr->shader, gr->model_u,     model.data);
-    gfx_shader_uniform_set(gr->shader, gr->proj_u,      projection);
-    gfx_shader_uniform_set(gr->shader, gr->view_u,      view);
-    gfx_shader_uniform_set(gr->shader, gr->viewpos_u,   view_pos);
-    gfx_shader_uniform_set(gr->shader, gr->roughness_u, &roughness);
-    gfx_shader_uniform_set(gr->shader, gr->metallic_u,  &metallic);
-    gfx_shader_uniform_set(gr->shader, gr->color_u,     (float*)color);
-    gfx_shader_uniform_set(gr->shader, gr->skybox_u,    &skybox_unit);
-    gfx_shader_uniform_set(gr->shader, gr->exposure_u,  &exposure);
-    gfx_shader_uniform_set(gr->shader, gr->shadowmap_u, &shadow_unit);
+    gfx_shader_uniform_set(gr->shader, gr->model_u,      model.data);
+    gfx_shader_uniform_set(gr->shader, gr->proj_u,       projection);
+    gfx_shader_uniform_set(gr->shader, gr->view_u,       view);
+    gfx_shader_uniform_set(gr->shader, gr->viewpos_u,    view_pos);
+    gfx_shader_uniform_set(gr->shader, gr->roughness_u,  &roughness);
+    gfx_shader_uniform_set(gr->shader, gr->metallic_u,   &metallic);
+    gfx_shader_uniform_set(gr->shader, gr->color_u,      (float*)color);
+    gfx_shader_uniform_set(gr->shader, gr->skybox_u,     &skybox_unit);
+    gfx_shader_uniform_set(gr->shader, gr->exposure_u,   &exposure);
+    gfx_shader_uniform_set(gr->shader, gr->shadowmap_u,  &shadow_unit);
     gfx_shader_uniform_set(gr->shader, gr->lightspace_u, light_space);
+    gfx_shader_uniform_set(gr->shader, gr->brdf_lut_u,   &brdf_unit);
     gfx_draw_id(GFX_TRIANGLES, 6);
 }
 

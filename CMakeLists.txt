@@ -146,7 +146,8 @@ add_executable(IbcWeb
         Src/Wire.c
         Src/ManipulatorDemo.c
         Src/ShadowRenderer.c
-        Src/GroundRenderer.c)
+        Src/GroundRenderer.c
+        Src/BrdfLut.c)
 
 target_compile_options(IbcWeb PRIVATE
         $<$<COMPILE_LANGUAGE:C>:-Wall>

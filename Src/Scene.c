@@ -15,6 +15,7 @@
 #include "Wire.h"
 #include "ShadowRenderer.h"
 #include "GroundRenderer.h"
+#include "BrdfLut.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -59,6 +60,7 @@ typedef struct scene_internal_pbr_material{
     int32_t exposure_uniform;
     int32_t shadow_map_uniform;
     int32_t light_space_uniform;
+    int32_t brdf_lut_uniform;
 
     gfx_shader_handle shader;
 } scene_internal_pbr_material;
@@ -135,6 +137,7 @@ typedef struct scene_internal_data{
 
     shadow_renderer shadow;
     ground_renderer ground;
+    gfx_texture_handle brdf_lut;
 } scene_internal_data;
 
 scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_shader_handle shadow_shader, mdl_primitive primitive) {
@@ -319,17 +322,25 @@ scene_handle scene_new(scene_desc const* desc) {
      */
     shadow_renderer_init(&handle->shadow);
 
-    /* Register shadow uniforms in every Lit material */
+    /* Register shadow + BRDF LUT uniforms in every Lit material */
     for (uint32_t i = 0; i < handle->materials_count; ++i) {
         scene_internal_pbr_material *mat = handle->materials + i;
         gfx_shader_uniform_enable(mat->shader, "shadow_map",  GFX_TYPE_SAMPLER_2D,  &mat->shadow_map_uniform);
         gfx_shader_uniform_enable(mat->shader, "light_space", GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
+        gfx_shader_uniform_enable(mat->shader, "brdf_lut",    GFX_TYPE_SAMPLER_2D,  &mat->brdf_lut_uniform);
     }
 
     /*
      * Ground renderer — owns 20×20 quad + Lit shader instance.
      */
     ground_renderer_init(&handle->ground);
+
+    /*
+     * BRDF integration LUT — generated once via a GPU render pass.
+     * Used by both mesh materials and the ground plane for correct
+     * metallic specular IBL (split-sum approximation).
+     */
+    handle->brdf_lut = brdf_lut_generate();
 
     /*
      * Loading of the meshes.
@@ -483,13 +494,15 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     gl_mat view = gl_mat_inverse(world_tr);
     gl_mat view_no_tr = gl_mat_remove_translation(view);
     gl_vec3 view_pos = gl_mat_get_translation(world_tr);
-    int32_t texture_unit = 0;
-    int32_t shadow_unit  = 1;
+    int32_t texture_unit = 0;   /* skybox cubemap  */
+    int32_t shadow_unit  = 1;   /* shadow depth    */
+    int32_t brdf_unit    = 2;   /* BRDF LUT        */
     float exposure = handle->skybox_enabled ? skybox_get_exposure(handle->skybox) : 1.0f;
     if(handle->skybox_enabled) {
         skybox_bind(handle->skybox);  /* binds cubemap to unit 0 */
     }
-    gfx_texture_bind(handle->shadow.depth_tex, shadow_unit);  /* shadow map on unit 1 */
+    gfx_texture_bind(handle->shadow.depth_tex, shadow_unit);
+    gfx_texture_bind(handle->brdf_lut,         brdf_unit);
 
     if(handle->skybox_enabled && handle->skybox_render && draw_skybox){
         skybox_render(handle->skybox, projection, view_no_tr.data);
@@ -520,6 +533,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->exposure_uniform, &exposure);
                 gfx_shader_uniform_set(mat->shader, mat->shadow_map_uniform,  &shadow_unit);
                 gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->shadow.light_space.data);
+                gfx_shader_uniform_set(mat->shader, mat->brdf_lut_uniform,    &brdf_unit);
 
             }
 
@@ -532,7 +546,8 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
         ground_renderer_render(&handle->ground,
                                projection, view.data, view_pos.data,
                                texture_unit, exposure,
-                               shadow_unit, handle->shadow.light_space.data);
+                               shadow_unit, handle->shadow.light_space.data,
+                               brdf_unit);
     }
 
     gfx_wireframe_enable(false);
@@ -635,6 +650,7 @@ void scene_delete(scene_handle handle) {
 
     shadow_renderer_destroy(&handle->shadow);
     ground_renderer_destroy(&handle->ground);
+    gfx_texture_destroy(handle->brdf_lut);
 
     OS_FREE(handle->root_nodes);
     OS_FREE(handle->nodes);
