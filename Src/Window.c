@@ -96,8 +96,8 @@ void window_scene_view_draw(){
     int32_t ww, wh;
     device_window_dimensions_get(&ww, &wh);
 
-    /* Right panel: wide enough for text + buttons (min 260 px). */
-    float panel_w = gl_max((float)ww * 0.23f, 260.0f);
+    /* Right panel: wide enough for text + buttons, but bounded on large displays. */
+    float panel_w = gl_clamp((float)ww * 0.23f, 260.0f, 380.0f);
     float view_w  = (float)ww - panel_w;
 
     /* ------------------------------------------------------------------
@@ -156,47 +156,51 @@ void window_scene_view_draw(){
             ImGuiWindowFlags_NoSavedSettings;
         igBegin("##panel", NULL, pf);
 
-        /* ---- Project identity ---- */
-        igSpacing();
-        igTextColored((ImVec4){0.50f, 0.78f, 1.00f, 1.00f}, "%s", project_info.course_name);
-        igTextColored((ImVec4){0.70f, 0.70f, 0.76f, 1.00f}, "%s", project_info.faculty_name);
-        igSpacing();
-        igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){1.0f, 1.0f, 1.0f, 1.0f});
-        igTextWrapped("%s", project_info.project_name);
-        igPopStyleColor(1);
-        igSpacing();
-        igText("Student:  %s", project_info.student_name);
-        igText("Profesor: %s", project_info.professor_name);
-        igSeparator();
-
-        /* ---- Camera ---- */
-        igTextDisabled("KAMERA");
-        window_view_options();
-        igSeparator();
-
-        /* ---- Manipulator controls ---- */
-        igTextDisabled("MANIPULATOR");
-        igSpacing();
-        window_manipulator_controls();
-        igSeparator();
-
-        /* ---- Camera control hints ---- */
-        igTextDisabled("KONTROLE");
-        igText("Desni klik    Rotacija");
-        igText("Srednji klik  Pomak");
-        igText("Tocak         Zum");
-        igSeparator();
-
-        /* ---- Stats ---- */
-        igTextDisabled("STATISTIKE");
+        igBeginChild_Str("PanelScroll", (ImVec2){0.0f, 0.0f}, false, 0);
         {
-            int32_t nodes = 0, meshes = 0;
-            scene_node_count(active_scene, &nodes);
-            scene_mesh_count(active_scene, &meshes);
-            igText("Cvorovi: %d   Mreze: %d", nodes, meshes);
-            igText("FPS: %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
+            /* ---- Project identity ---- */
+            igSpacing();
+            igTextColored((ImVec4){0.50f, 0.78f, 1.00f, 1.00f}, "%s", project_info.course_name);
+            igTextColored((ImVec4){0.70f, 0.70f, 0.76f, 1.00f}, "%s", project_info.faculty_name);
+            igSpacing();
+            igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){1.0f, 1.0f, 1.0f, 1.0f});
+            igTextWrapped("%s", project_info.project_name);
+            igPopStyleColor(1);
+            igSpacing();
+            igText("Student:  %s", project_info.student_name);
+            igText("Profesor: %s", project_info.professor_name);
+            igSeparator();
+
+            /* ---- Camera ---- */
+            igTextDisabled("KAMERA");
+            window_view_options();
+            igSeparator();
+
+            /* ---- Manipulator controls ---- */
+            igTextDisabled("MANIPULATOR");
+            igSpacing();
+            window_manipulator_controls();
+            igSeparator();
+
+            /* ---- Camera control hints ---- */
+            igTextDisabled("KONTROLE");
+            igText("Desni klik    Rotacija");
+            igText("Srednji klik  Pomak");
+            igText("Tocak         Zum");
+            igSeparator();
+
+            /* ---- Stats ---- */
+            igTextDisabled("STATISTIKE");
+            {
+                int32_t nodes = 0, meshes = 0;
+                scene_node_count(active_scene, &nodes);
+                scene_mesh_count(active_scene, &meshes);
+                igText("Cvorovi: %d   Mreze: %d", nodes, meshes);
+                igText("FPS: %.0f", frame_dt > 0.00001f ? 1.0f / frame_dt : 0.0f);
+            }
+            igSeparator();
         }
-        igSeparator();
+        igEndChild();
 
         igEnd();
     }
@@ -449,7 +453,7 @@ void window_run() {
         window_manipulator_demo();
 
 #ifndef NDEBUG
-        window_log();
+        //window_log();
 #endif
 
         int32_t width, height;

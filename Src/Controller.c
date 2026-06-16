@@ -18,7 +18,7 @@
 #define DELTA_EPSILON 1E-4
 
 typedef struct controller_data{
-    float jaw, pitch;
+    float yaw, pitch;
     float move_speed, rot_speed;
 
     gl_mat rotation;

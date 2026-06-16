@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 #include "SceneView.h"
 #include "Allocator.h"
 #include "Graphics.h"
@@ -19,7 +20,9 @@
 
 #define DEFAULT_DISTANCE 8
 #define DEFAULT_MOVE_SPEED 20
-#define DEFAULT_ROTATE_SPEED 20
+#define DEFAULT_ROTATE_SPEED 0.12f
+#define PERSPECTIVE_ZOOM_SENSITIVITY 0.12f
+#define ORTHOGRAPHIC_ZOOM_SENSITIVITY 0.10f
 #define DELTA_EPSILON 1E-4
 
 typedef struct scene_view_controller{
@@ -27,7 +30,7 @@ typedef struct scene_view_controller{
     float fov;
     float znear, zfar;
 
-    float jaw, pitch;
+    float yaw, pitch;
     float move_speed, rot_speed;
 
     gl_mat rotation;
@@ -68,9 +71,9 @@ void scene_view_controller_update_projection(scene_view_handle handle) {
 
 void scene_view_controller_update_internal(scene_view_handle handle) {
 
-    gl_mat mat_pitch = gl_mat_rotate_y(-handle->controller.pitch);
-    gl_mat mat_jaw = gl_mat_rotate_x(handle->controller.jaw);
-    handle->controller.rotation = gl_mat_mul(mat_pitch, mat_jaw);
+    gl_mat mat_yaw = gl_mat_rotate_y(-handle->controller.yaw);
+    gl_mat mat_pitch = gl_mat_rotate_x(handle->controller.pitch);
+    handle->controller.rotation = gl_mat_mul(mat_yaw, mat_pitch);
 
     gl_vec3 rel_pos = gl_mat_mul_vec(handle->controller.rotation, gl_vec3_new(0, 0, handle->controller.distance));
     handle->controller.position = gl_vec3_add(handle->controller.offset, rel_pos);
@@ -150,11 +153,9 @@ void scene_view_update_controller(scene_view_handle handle) {
 
         if (handle->view_type == SCENE_VIEW_PERSPECTIVE && joystick.mouse.rmb_down) {
 
-            float new_jaw = (handle->controller.jaw + joystick.pointer.dy * dt * handle->controller.rot_speed);
-            float new_pitch = (handle->controller.pitch + joystick.pointer.dx * dt * handle->controller.rot_speed);
-
-            handle->controller.jaw = new_jaw;
-            handle->controller.pitch = new_pitch;
+            handle->controller.yaw += (float)joystick.pointer.dx * handle->controller.rot_speed;
+            handle->controller.pitch += (float)joystick.pointer.dy * handle->controller.rot_speed;
+            handle->controller.pitch = gl_clamp(handle->controller.pitch, -89.0f, 89.0f);
             has_changed_position = true;
         }
 
@@ -169,22 +170,13 @@ void scene_view_update_controller(scene_view_handle handle) {
 
     if (gl_abs(joystick.pointer.scroll_dy) > DELTA_EPSILON) {
         if (handle->view_type == SCENE_VIEW_PERSPECTIVE) {
-            handle->controller.distance += joystick.pointer.scroll_dy * dt * handle->controller.move_speed;
-            if (handle->controller.distance < DELTA_EPSILON) {
-                gl_vec3 move = gl_vec3_new(0, 0, joystick.pointer.scroll_dy * dt * handle->controller.move_speed);
-                handle->controller.offset = gl_vec3_add(handle->controller.offset,
-                                                        gl_mat_mul_vec(handle->controller.rotation, move));
-
-                handle->controller.distance = DELTA_EPSILON;
-            }
-
+            handle->controller.distance *= expf(-(float)joystick.pointer.scroll_dy * PERSPECTIVE_ZOOM_SENSITIVITY);
+            handle->controller.distance = gl_clamp(handle->controller.distance, 0.2f, 100.0f);
             has_changed_position = true;
         }
         else {
-            handle->controller.fov += joystick.pointer.scroll_dy * dt * handle->controller.move_speed * 3;
-            if (handle->controller.fov < DELTA_EPSILON) {
-                handle->controller.fov = DELTA_EPSILON;
-            }
+            handle->controller.fov *= expf(-(float)joystick.pointer.scroll_dy * ORTHOGRAPHIC_ZOOM_SENSITIVITY);
+            handle->controller.fov = gl_clamp(handle->controller.fov, 1.0f, 200.0f);
             has_changed_projection = true;
         }
     }
@@ -279,7 +271,7 @@ void scene_view_set_type(scene_view_handle handle, scene_view_type view_type) {
     handle->name = view_type_to_string(view_type);
 
     if (view_type != SCENE_VIEW_PERSPECTIVE) {
-        handle->controller.jaw = 0.0f;
+        handle->controller.yaw = 0.0f;
         handle->controller.pitch = 0.0f;
         scene_view_controller_update_internal(handle);
     }
