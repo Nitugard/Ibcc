@@ -8,6 +8,8 @@
 #ifndef IBCWEB_SKYBOX_H
 #define IBCWEB_SKYBOX_H
 
+#include <stdint.h>
+
 #ifndef IBC_API
 #define IBC_API extern
 #endif
@@ -20,5 +22,9 @@ IBC_API void skybox_bind(skybox_handle handle);
 IBC_API float skybox_get_exposure(skybox_handle handle);
 IBC_API void skybox_set_exposure(skybox_handle handle, float exposure);
 IBC_API void skybox_destroy(skybox_handle handle);
+
+/* Returns the raw OpenGL texture ID of the skybox's environment cubemap.
+ * Pass to prefilter_env_generate() to build the specular IBL map. */
+IBC_API uint32_t skybox_get_cubemap_id(skybox_handle handle);
 
 #endif //IBCWEB_SKYBOX_H

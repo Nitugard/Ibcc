@@ -16,6 +16,7 @@
 #include "ShadowRenderer.h"
 #include "GroundRenderer.h"
 #include "BrdfLut.h"
+#include "PrefilterEnv.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -61,6 +62,7 @@ typedef struct scene_internal_pbr_material{
     int32_t shadow_map_uniform;
     int32_t light_space_uniform;
     int32_t brdf_lut_uniform;
+    int32_t prefiltered_env_uniform;
 
     gfx_shader_handle shader;
 } scene_internal_pbr_material;
@@ -138,6 +140,7 @@ typedef struct scene_internal_data{
     shadow_renderer shadow;
     ground_renderer ground;
     gfx_texture_handle brdf_lut;
+    uint32_t prefiltered_env_id;   /* raw GL cubemap — 0 when no skybox */
 } scene_internal_data;
 
 scene_internal_mesh_primitive scene_new_primitive(gfx_shader_handle shader, gfx_shader_handle shadow_shader, mdl_primitive primitive) {
@@ -229,8 +232,10 @@ scene_handle scene_new(scene_desc const* desc) {
     handle->skybox_enabled = desc->skybox.path != 0;
     handle->skybox_render = desc->skybox.render;
     handle->plane_render = true;
+    handle->prefiltered_env_id = 0;
     if(desc->skybox.path != 0) {
         handle->skybox = skybox_load(desc->skybox.path);
+        handle->prefiltered_env_id = prefilter_env_generate(skybox_get_cubemap_id(handle->skybox));
     }
 
     /*
@@ -325,9 +330,10 @@ scene_handle scene_new(scene_desc const* desc) {
     /* Register shadow + BRDF LUT uniforms in every Lit material */
     for (uint32_t i = 0; i < handle->materials_count; ++i) {
         scene_internal_pbr_material *mat = handle->materials + i;
-        gfx_shader_uniform_enable(mat->shader, "shadow_map",  GFX_TYPE_SAMPLER_2D,  &mat->shadow_map_uniform);
-        gfx_shader_uniform_enable(mat->shader, "light_space", GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
-        gfx_shader_uniform_enable(mat->shader, "brdf_lut",    GFX_TYPE_SAMPLER_2D,  &mat->brdf_lut_uniform);
+        gfx_shader_uniform_enable(mat->shader, "shadow_map",       GFX_TYPE_SAMPLER_2D,  &mat->shadow_map_uniform);
+        gfx_shader_uniform_enable(mat->shader, "light_space",      GFX_TYPE_FLOAT_MAT_4, &mat->light_space_uniform);
+        gfx_shader_uniform_enable(mat->shader, "brdf_lut",         GFX_TYPE_SAMPLER_2D,  &mat->brdf_lut_uniform);
+        gfx_shader_uniform_enable(mat->shader, "prefiltered_env",  GFX_TYPE_SAMPLER_CUBE, &mat->prefiltered_env_uniform);
     }
 
     /*
@@ -494,15 +500,19 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
     gl_mat view = gl_mat_inverse(world_tr);
     gl_mat view_no_tr = gl_mat_remove_translation(view);
     gl_vec3 view_pos = gl_mat_get_translation(world_tr);
-    int32_t texture_unit = 0;   /* skybox cubemap  */
-    int32_t shadow_unit  = 1;   /* shadow depth    */
-    int32_t brdf_unit    = 2;   /* BRDF LUT        */
+    int32_t texture_unit   = 0;   /* skybox cubemap      */
+    int32_t shadow_unit    = 1;   /* shadow depth        */
+    int32_t brdf_unit      = 2;   /* BRDF LUT            */
+    int32_t prefilter_unit = 3;   /* prefiltered env IBL */
     float exposure = handle->skybox_enabled ? skybox_get_exposure(handle->skybox) : 1.0f;
     if(handle->skybox_enabled) {
         skybox_bind(handle->skybox);  /* binds cubemap to unit 0 */
     }
     gfx_texture_bind(handle->shadow.depth_tex, shadow_unit);
     gfx_texture_bind(handle->brdf_lut,         brdf_unit);
+    if (handle->prefiltered_env_id) {
+        prefilter_env_bind(handle->prefiltered_env_id, prefilter_unit);
+    }
 
     if(handle->skybox_enabled && handle->skybox_render && draw_skybox){
         skybox_render(handle->skybox, projection, view_no_tr.data);
@@ -533,7 +543,8 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                 gfx_shader_uniform_set(mat->shader, mat->exposure_uniform, &exposure);
                 gfx_shader_uniform_set(mat->shader, mat->shadow_map_uniform,  &shadow_unit);
                 gfx_shader_uniform_set(mat->shader, mat->light_space_uniform, handle->shadow.light_space.data);
-                gfx_shader_uniform_set(mat->shader, mat->brdf_lut_uniform,    &brdf_unit);
+                gfx_shader_uniform_set(mat->shader, mat->brdf_lut_uniform,           &brdf_unit);
+                gfx_shader_uniform_set(mat->shader, mat->prefiltered_env_uniform, &prefilter_unit);
 
             }
 
@@ -547,7 +558,7 @@ void scene_draw_with_camera(scene_handle handle, float projection[16], float tr[
                                projection, view.data, view_pos.data,
                                texture_unit, exposure,
                                shadow_unit, handle->shadow.light_space.data,
-                               brdf_unit);
+                               brdf_unit, prefilter_unit);
     }
 
     gfx_wireframe_enable(false);
@@ -569,11 +580,16 @@ void scene_set_skybox_path(scene_handle handle, const char* path) {
         handle->skybox = 0;
         handle->skybox_enabled = false;
     }
+    if (handle->prefiltered_env_id) {
+        prefilter_env_destroy(handle->prefiltered_env_id);
+        handle->prefiltered_env_id = 0;
+    }
 
     if (path != 0 && path[0] != '\0') {
         handle->skybox = skybox_load(path);
         skybox_set_exposure(handle->skybox, gl_clamp(exposure, 0.1f, 5.0f));
         handle->skybox_enabled = true;
+        handle->prefiltered_env_id = prefilter_env_generate(skybox_get_cubemap_id(handle->skybox));
     }
 }
 
@@ -651,6 +667,8 @@ void scene_delete(scene_handle handle) {
     shadow_renderer_destroy(&handle->shadow);
     ground_renderer_destroy(&handle->ground);
     gfx_texture_destroy(handle->brdf_lut);
+    if (handle->prefiltered_env_id)
+        prefilter_env_destroy(handle->prefiltered_env_id);
 
     OS_FREE(handle->root_nodes);
     OS_FREE(handle->nodes);

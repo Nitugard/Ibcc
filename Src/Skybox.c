@@ -214,3 +214,8 @@ void skybox_destroy(skybox_handle handle) {
     gfx_shader_destroy(handle->shader);
     OS_FREE(handle);
 }
+
+uint32_t skybox_get_cubemap_id(skybox_handle handle) {
+    CORE_ASSERT(handle != 0 && "Invalid skybox pointer");
+    return gfx_texture_cubemap_get_id(handle->cubemap_texture);
+}

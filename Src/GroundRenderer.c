@@ -58,13 +58,14 @@ void ground_renderer_init(ground_renderer* gr)
     gfx_shader_uniform_enable(gr->shader, "shadow_map",              GFX_TYPE_SAMPLER_2D,  &gr->shadowmap_u);
     gfx_shader_uniform_enable(gr->shader, "light_space",             GFX_TYPE_FLOAT_MAT_4, &gr->lightspace_u);
     gfx_shader_uniform_enable(gr->shader, "brdf_lut",                GFX_TYPE_SAMPLER_2D,  &gr->brdf_lut_u);
+    gfx_shader_uniform_enable(gr->shader, "prefiltered_env",         GFX_TYPE_SAMPLER_CUBE, &gr->prefiltered_env_u);
 }
 
 void ground_renderer_render(ground_renderer* gr,
                              float projection[16], float view[16], float view_pos[3],
                              int32_t skybox_unit, float exposure,
                              int32_t shadow_unit, float light_space[16],
-                             int32_t brdf_unit)
+                             int32_t brdf_unit, int32_t prefilter_unit)
 {
     static const float color[3]    = {0.50f, 0.50f, 0.48f};
     static       float roughness   = 0.92f;
@@ -83,7 +84,8 @@ void ground_renderer_render(ground_renderer* gr,
     gfx_shader_uniform_set(gr->shader, gr->exposure_u,   &exposure);
     gfx_shader_uniform_set(gr->shader, gr->shadowmap_u,  &shadow_unit);
     gfx_shader_uniform_set(gr->shader, gr->lightspace_u, light_space);
-    gfx_shader_uniform_set(gr->shader, gr->brdf_lut_u,   &brdf_unit);
+    gfx_shader_uniform_set(gr->shader, gr->brdf_lut_u,          &brdf_unit);
+    gfx_shader_uniform_set(gr->shader, gr->prefiltered_env_u,   &prefilter_unit);
     gfx_draw_id(GFX_TRIANGLES, 6);
 }
 

@@ -11,7 +11,7 @@
 #include "Graphics.h"
 #include "GlMath.h"
 
-#define SHADOW_MAP_SIZE 1024
+#define SHADOW_MAP_SIZE 2048
 
 typedef struct {
     gfx_shader_handle      shader;
